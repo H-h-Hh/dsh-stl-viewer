@@ -1,0 +1,19 @@
+# --- dependencies (the e2e harness installs React into test/) ---
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# --- test output ---
+test/*.png
+*.log
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- local models: the plugin ships no geometry, fixtures are generated ---
+*.step
+*.3mf

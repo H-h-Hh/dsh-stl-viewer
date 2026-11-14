@@ -1,0 +1,27 @@
+name: test
+
+# Syntax check + the vm-sandbox smoke test, on every push and PR.
+# No build step exists, so this is the whole gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax check
+        run: node --check lib/client.js
+      - name: Smoke test
+        run: node test/smoke.cjs

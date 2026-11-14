@@ -1,0 +1,64 @@
+{
+  "name": "dsh-stl-viewer",
+  "version": "1.0.0",
+  "description": "STL / 3D model preview in the DeepSeek Harness side card: registers an 'stl' file viewer on dsh-better-sidebar with a hand-rolled WebGL orbit camera (left-drag rotate, wheel zoom, right-drag pan, double-click reset).",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "stl",
+    "3d",
+    "viewer",
+    "webgl",
+    "better-sidebar",
+    "cad"
+  ],
+  "author": "H-h-Hh",
+  "license": "MIT",
+  "homepage": "https://github.com/H-h-Hh/dsh-stl-viewer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/H-h-Hh/dsh-stl-viewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/H-h-Hh/dsh-stl-viewer/issues"
+  },
+  "icon": "./icon.svg",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "icon.svg"
+  ],
+  "scripts": {
+    "test": "node test/smoke.cjs",
+    "check": "node --check lib/client.js && node test/smoke.cjs"
+  },
+  "engines": {
+    "dsh": ">=0.2.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.2-rc.3": "compatible",
+        "0.2.2-rc.1": "compatible",
+        "0.2.1-rc.3": "compatible"
+      }
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

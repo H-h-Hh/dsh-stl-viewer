@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-stl-viewer preview harness</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f1117; color: #e6e8ee;
+    font: 13px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  #stage { position: absolute; inset: 24px; border: 1px solid #2a2f3a;
+    border-radius: 10px; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<!--
+  End-to-end harness: mounts the real component with the real thing it needs
+  (React + WebGL in Electron). Paths assume `npm i --prefix . react react-dom`
+  ran in this directory; see the run command in ../README.md.
+
+    ?file=./fixtures/cube.stl    model to load (default)
+    ?mode=error                  render the built-in failure path instead
+-->
+<script src="./node_modules/react/umd/react.production.min.js"></script>
+<script src="./node_modules/react-dom/umd/react-dom.production.min.js"></script>
+<script>
+  // Stand-in for the DSH module loader: client.js registers its factory here.
+  window.__captured = null
+  window.__ModuleLoader__ = {
+    load: function (entry) {
+      window.__captured = entry
+    }
+  }
+</script>
+<script src="../lib/client.js"></script>
+<script>
+  (function () {
+    var entry = window.__captured
+    var mod = entry.factory(function (name) {
+      if (name === 'react') return window.React
+      throw new Error('unexpected require: ' + name)
+    })
+
+    var descriptors = []
+    var ctx = {
+      betterSidebar: {
+        registerFileViewer: function (d) { descriptors.push(d); return function () {} },
+        registerFileIcon: function () { return function () {} }
+      }
+    }
+    mod.apply(ctx)
+    window.__viewerDescriptor = descriptors[0]
+
+    var Viewer = descriptors[0].component
+    var params = new URLSearchParams(location.search)
+    var file = params.get('file') || './fixtures/cube.stl'
+    var mode = params.get('mode') || 'ready'
+
+    var root = ReactDOM.createRoot(document.getElementById('stage'))
+    if (mode === 'error') {
+      root.render(React.createElement(Viewer, { path: 'broken.stl', mediaUrl: './fixtures/broken.stl' }))
+    } else {
+      root.render(React.createElement(Viewer, { path: file, mediaUrl: file }))
+    }
+    window.__mounted = true
+  })()
+</script>
+</body>
+</html>

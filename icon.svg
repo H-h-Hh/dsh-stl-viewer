@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="STL viewer">
+  <defs>
+    <linearGradient id="top" x1="24" y1="30" x2="104" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a9c2f2"/>
+      <stop offset="1" stop-color="#6f8fd0"/>
+    </linearGradient>
+    <linearGradient id="left" x1="24" y1="60" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7d9bdd"/>
+      <stop offset="1" stop-color="#4a63a0"/>
+    </linearGradient>
+    <linearGradient id="right" x1="64" y1="60" x2="110" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5c76b6"/>
+      <stop offset="1" stop-color="#33477c"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#1b2030"/>
+  <path d="M64 18 108 42v44L64 110 20 86V42Z" fill="none" stroke="#7e9ee0" stroke-opacity=".45" stroke-width="2"/>
+  <path d="M64 26 100 46v36L64 102 28 82V46Z" fill="url(#top)" fill-opacity=".18"/>
+  <path d="M64 34 92 50 64 66 36 50Z" fill="url(#top)"/>
+  <path d="M36 50l28 16v28L36 78Z" fill="url(#left)"/>
+  <path d="M92 50 64 66v28l28-16Z" fill="url(#right)"/>
+  <path d="M64 34 92 50 64 66 36 50Z M36 50l28 16 28-16M64 66v28" fill="none" stroke="#0f1320" stroke-opacity=".35" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
