@@ -2,6 +2,7 @@
 //   env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
 //     <electron> test/shoot.cjs "test/harness.html?file=./fixtures/cube.stl" out.png
 // SwiftShader switches make WebGL work without a GPU (CI, sandboxes, VMs).
+const os = require('os')
 const { app, BrowserWindow } = require('electron')
 const fs = require('fs')
 const path = require('path')
@@ -11,8 +12,11 @@ const out = process.argv[process.argv.length - 1]
 const width = 900
 const height = 700
 
+// separate userData dir: two Electron instances sharing the default one fight over the cache
+app.setPath('userData', path.join(os.tmpdir(), 'dsh-stl-shoot-' + process.pid))
 app.commandLine.appendSwitch('enable-unsafe-swiftshader')
 app.commandLine.appendSwitch('use-gl', 'swiftshader')
+app.commandLine.appendSwitch('allow-file-access-from-files')
 app.disableHardwareAcceleration()
 
 app.whenReady().then(async () => {
