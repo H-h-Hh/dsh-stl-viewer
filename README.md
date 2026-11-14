@@ -12,6 +12,12 @@ double-click  reset the view (the 复位视角 button and the R / 0 keys do too)
 ```
 
 <p align="center">
+  <img src="docs/preview/preview_sidebar.jpg" width="100%" alt="A 47,068-triangle gear cover rendered in the DSH side card">
+</p>
+
+<p align="center"><sub>A 47,068-triangle gear cover (176 × 176 × 40 mm) in the real side card, next to the chat that produced it.</sub></p>
+
+<p align="center">
   <img src="docs/preview/preview_case.jpg" width="49%" alt="3D printed enclosure lid">
   <img src="docs/preview/preview_stencil.jpg" width="49%" alt="PCB solder-paste stencil">
 </p>
