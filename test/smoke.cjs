@@ -310,6 +310,46 @@ function serveBinary(buf) {
   const seg = geo.closestSegments([0, 0, 0], [10, 0, 0], [0, 3, 0], [10, 3, 0])
   check('parallel segments are 3 apart', Math.abs(seg.d - 3) < 1e-4, String(seg.d))
 
+  console.log('\n[9] feature snapping')
+  const cubeMesh = geo.parseStl(fs.readFileSync(path.join(FIXTURES, 'cube.stl')))
+  const topo = geo.buildFeatureTopology(cubeMesh.positions, cubeMesh.normals)
+  let creases = 0
+  for (const k in topo.edges) creases++
+  let cornerCount = 0
+  for (const k in topo.corners) cornerCount++
+  check('cube has 8 corners', cornerCount === 8, String(cornerCount))
+  // 12 条立方体的棱算折边；6 条把每个面切成两个三角形的那条对角线是共面的，不算
+  check('cube has 12 creases (face diagonals smoothed)', creases === 12, String(creases))
+  // 网格完全一样的两份三角形共享边、法线相同时不算折边
+  const flat = new Float32Array([
+    0, 0, 0, 1, 0, 0, 0, 1, 0,
+    0, 1, 0, 1, 0, 0, 1, 1, 0
+  ])
+  const flatNormals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])
+  const flatTopo = geo.buildFeatureTopology(flat, flatNormals)
+  let flatInner = 0
+  const innerKey = geo.coordKey(1, 0, 0) + '|' + geo.coordKey(0, 1, 0)
+  const innerKey2 = geo.coordKey(0, 1, 0) + '|' + geo.coordKey(1, 0, 0)
+  flatInner = flatTopo.edges[innerKey] || flatTopo.edges[innerKey2] ? 1 : 0
+  check('coplanar neighbours are not a crease', flatInner === 0, String(flatInner))
+
+  const onSeg = geo.closestPointOnSegment([5, 5, 0], [0, 0, 0], [10, 0, 0])
+  check('point to segment is 5', Math.abs(onSeg.d - 5) < 1e-6, String(onSeg.d))
+  const clamped = geo.closestPointOnSegment([-4, 0, 0], [0, 0, 0], [10, 0, 0])
+  check('point before the segment clamps to its start', Math.abs(clamped.d - 4) < 1e-6, String(clamped.d))
+  const pl = geo.pointPlane([0, 0, 7], geo.facePlane(pos, 9))
+  check('point to plane is 2', Math.abs(pl.d - 2) < 1e-6 && Math.abs(pl.foot[2] - 5) < 1e-6, JSON.stringify(pl))
+  check(
+    'perpendicular segments are 90°',
+    Math.abs(geo.segmentAngleDeg([0, 0, 0], [1, 0, 0], [0, 0, 0], [0, 1, 0]) - 90) < 1e-6,
+    'angle'
+  )
+  check(
+    'screen gap to a segment',
+    Math.abs(geo.segmentGap2D(0, 0, { x: 0, y: 10 }, { x: 10, y: 10 }) - 10) < 1e-6,
+    'gap'
+  )
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

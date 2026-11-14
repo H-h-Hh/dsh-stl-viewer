@@ -10,10 +10,10 @@ wheel         zoom
 right-drag    pan (Shift + left-drag does the same; two-finger scroll zooms)
 double-click  reset the view (the 复位视角 button and the R / 0 keys do too)
 
-measure       click 测量 (or press M), then click two flat faces: the gap between
-              two parallel faces (or the shortest distance plus the angle between two
-              skewed ones) appears next to the line, with ΔX/ΔY/ΔZ underneath.
-              Dragging still orbits, Esc or 测量 again leaves the mode
+measure       click 测量 (or press M), then click two features — the cursor snaps to a
+              vertex, an edge or a whole face, the way Bambu Studio's measure tool does.
+              Shift-click takes an arbitrary point on the surface instead. Dragging still
+              orbits, Esc or 测量 again leaves the mode
 ```
 
 <p align="center">
@@ -28,6 +28,14 @@ measure       click 测量 (or press M), then click two flat faces: the gap betw
 </p>
 
 <p align="center"><sub>No viewer installed: “此文件类型不支持预览 / 下载查看”. With the plugin: a 2,912-triangle enclosure lid and a 17,136-triangle stencil, both in the side card.</sub></p>
+
+<p align="center">
+  <img src="docs/preview/preview_points.jpg" width="100%" alt="Two snapped corners on a gear cover, reading 94.0 mm point to point">
+</p>
+
+<p align="center"><sub>点到点: the cursor snaps to the corner you are aiming at, the picked point is drawn
+as a dot on the model, and the readout carries the straight distance plus ΔX / ΔY / ΔZ: 94.0 mm
+across two spokes of a 176 mm gear cover.</sub></p>
 
 <p align="center">
   <img src="docs/preview/preview_faces.jpg" width="100%" alt="Two parallel plates highlighted, reading 36.0 mm face to face">
@@ -56,13 +64,17 @@ gap between them: 36.0 mm here, with ΔX / ΔY / ΔZ underneath.</sub></p>
   instead of showing them lying on their back
 - **Frame-fit camera** — the orbit distance is derived from the bounding sphere and the
   FOV, so a 0.6 mm thick stencil and a 300 mm part both fill the panel on open
-- **Measure face to face** — click a face, click another face. The picked triangle is
-  flood-filled across shared edges into the whole coplanar region, so a flat face is one
-  region and not one triangle; two parallel faces report the plane gap (thickness, or the
-  air between two parts), two skewed ones report their true shortest distance plus the
-  angle. Picking is a ray–triangle intersection against the real mesh, and the numbers come
-  from the raw file coordinates rather than the normalised render space, so they are the
-  same numbers you would measure in CAD
+- **Measure the way a CAD tool does** — the pointer snaps to a **vertex**, an **edge** or a
+  whole **face**, like [Bambu Studio's measure tool](https://wiki.bambulab.com/en/software/bambu-studio/measure):
+  corners within 12 px win over edges within 8 px, which win over the face underneath, and
+  Shift-click takes an arbitrary point instead. Only real creases snap (boundary edges, or
+  neighbours more than 20° apart), so a finely tessellated cylinder does not turn into a
+  field of snapping edges. The pair decides what is measured — point/point is the straight
+  distance, point/face the perpendicular distance, edge/edge the angle plus the gap,
+  face/face the plane gap when parallel and the true shortest distance plus the angle when
+  not — and every readout carries ΔX / ΔY / ΔZ. Picking is a ray–triangle intersection
+  against the real mesh, and the numbers come from the raw file coordinates rather than the
+  normalised render space, so they are the same numbers you would measure in CAD
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
   the app's dark/light theme instead of stamping a white box on it
 - **No build step, no dependencies** — `lib/client.js` *is* the artifact
@@ -139,6 +151,10 @@ generic blob.
   faces, which is what you want when measuring a flat pad against a plate, but a fillet is
   not a single face. Faces are grown along shared edges only, so a mesh with welded
   vertices gives the best regions.
+- **Snapping needs the crease topology, which is built on first use.** Finding corners and
+  creases means an edge sweep over the mesh — 0.6 s for 47 k facets — so it happens the first
+  time you hover in measure mode instead of when the file opens. Meshes above 400 k facets
+  skip it and fall back to face picking.
 - **Z-up is assumed.** Models authored Y-up will lie on their side. Axis guessing is
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one
@@ -156,8 +172,10 @@ node test/smoke.cjs
 `test/smoke.cjs` runs `lib/client.js` in a `vm` sandbox with a minimal React hooks stub and
 a replaceable `fetch`, and asserts the module contract, the viewer descriptor, a
 hand-built binary cube (12 facets, size 20), an ASCII single triangle, the three
-error paths (garbage bytes, empty file, failed fetch), and the face-to-face geometry —
-plane fitting, point-to-triangle and triangle-to-triangle distance. No browser needed.
+error paths (garbage bytes, empty file, failed fetch), the face-to-face geometry —
+plane fitting, point-to-triangle and triangle-to-triangle distance — and the feature
+topology: 8 corners and exactly 12 creases on a cube (the 6 in-plane diagonals do not
+count), plus point/segment/plane helpers. No browser needed.
 `.github/workflows/test.yml` runs the same on every push.
 
 The end-to-end check uses a real renderer: `test/harness.html` mounts the component with
@@ -170,10 +188,15 @@ screen pixels of the two plate faces through the viewer's `_test` handle, clicks
 clicks both faces, and asserts the label reads `36.0 mm` with `面到面 · 平行面间距`, that
 `_test.measure().parallel` is true, and that Esc clears everything again. The fixture
 `test/fixtures/plates.stl` comes from `test/fixtures/make-plates.cjs`: two 80 x 60 mm
-plates 36 mm apart, the top one covering half of the bottom one.
+plates 36 mm apart, the top one covering half of the bottom one. A second fixture,
+`test/fixtures/plates.stl`, doubles as the snapping check: `test/snap-points.cjs` scans the
+canvas for pixels that snap to a `point`, picks the two farthest apart and asserts the label
+reads `58.0 mm` — the diagonal of the top plate — with ΔX 40 / ΔY 0 / ΔZ 42.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
+  "test/harness.html?file=./fixtures/plates.stl" out.png
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/snap-points.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
 ```
 
@@ -186,7 +209,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 ```
 
 - 左键旋转 / 滚轮缩放 / 右键平移 / 双击复位（`R`、`0` 也复位）
-- 点「测量」（或按 `M`）后点两个平面：平行的两片报"平行面间距"（板的厚度、两件之间的空隙），不平行的报真实最短距离 + 夹角，线段旁带 ΔX/ΔY/ΔZ；拖动仍可旋转，`Esc` 退出
+- 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物
