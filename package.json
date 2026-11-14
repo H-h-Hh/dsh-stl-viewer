@@ -1,7 +1,7 @@
 {
   "name": "dsh-stl-viewer",
-  "version": "1.1.0",
-  "description": "STL / 3D model preview in the DeepSeek Harness side card: registers an 'stl' file viewer on dsh-better-sidebar with a hand-rolled WebGL orbit camera (left-drag rotate, wheel zoom, right-drag pan, double-click reset) and two-point measuring.",
+  "version": "1.2.0",
+  "description": "STL / 3D model preview in the DeepSeek Harness side card: registers an 'stl' file viewer on dsh-better-sidebar with a hand-rolled WebGL orbit camera (left-drag rotate, wheel zoom, right-drag pan, double-click reset) and face-to-face measuring.",
   "keywords": [
     "dsh",
     "dsh-plugin",

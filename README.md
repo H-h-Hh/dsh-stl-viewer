@@ -10,9 +10,10 @@ wheel         zoom
 right-drag    pan (Shift + left-drag does the same; two-finger scroll zooms)
 double-click  reset the view (the 复位视角 button and the R / 0 keys do too)
 
-measure       click 测量 (or press M), then click two points on the surface:
-              the distance and ΔX/ΔY/ΔZ appear next to the line; dragging still
-              orbits, Esc or 测量 again leaves the mode
+measure       click 测量 (or press M), then click two flat faces: the gap between
+              two parallel faces (or the shortest distance plus the angle between two
+              skewed ones) appears next to the line, with ΔX/ΔY/ΔZ underneath.
+              Dragging still orbits, Esc or 测量 again leaves the mode
 ```
 
 <p align="center">
@@ -29,10 +30,12 @@ measure       click 测量 (or press M), then click two points on the surface:
 <p align="center"><sub>No viewer installed: “此文件类型不支持预览 / 下载查看”. With the plugin: a 2,912-triangle enclosure lid and a 17,136-triangle stencil, both in the side card.</sub></p>
 
 <p align="center">
-  <img src="docs/preview/preview_measure.jpg" width="100%" alt="Measuring 76.4 mm across a gear cover, with ΔX / ΔY / ΔZ shown next to the line">
+  <img src="docs/preview/preview_faces.jpg" width="100%" alt="Two parallel plates highlighted, reading 36.0 mm face to face">
 </p>
 
-<p align="center"><sub>测量: two clicks on the surface, and the distance appears next to the line — 76.4 mm across this 176 mm gear cover, with the per-axis deltas underneath.</sub></p>
+<p align="center"><sub>面到面: click one face, then another. Coplanar triangles are flood-filled from the
+picked one, so you measure a real face — not one triangle — and two parallel faces give the
+gap between them: 36.0 mm here, with ΔX / ΔY / ΔZ underneath.</sub></p>
 
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
@@ -53,10 +56,13 @@ measure       click 测量 (or press M), then click two points on the surface:
   instead of showing them lying on their back
 - **Frame-fit camera** — the orbit distance is derived from the bounding sphere and the
   FOV, so a 0.6 mm thick stencil and a 300 mm part both fill the panel on open
-- **Measure** — click two points on the surface and read the distance off the model.
-  Picking is a ray–triangle intersection against the real mesh, and the numbers come from
-  the raw file coordinates rather than the normalised render space, so they are the same
-  numbers you would measure in CAD
+- **Measure face to face** — click a face, click another face. The picked triangle is
+  flood-filled across shared edges into the whole coplanar region, so a flat face is one
+  region and not one triangle; two parallel faces report the plane gap (thickness, or the
+  air between two parts), two skewed ones report their true shortest distance plus the
+  angle. Picking is a ray–triangle intersection against the real mesh, and the numbers come
+  from the raw file coordinates rather than the normalised render space, so they are the
+  same numbers you would measure in CAD
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
   the app's dark/light theme instead of stamping a white box on it
 - **No build step, no dependencies** — `lib/client.js` *is* the artifact
@@ -129,6 +135,10 @@ generic blob.
   raw bounding box, not mm or inch.
 - **Measurements say `mm`, because CAD STL almost always is.** The number is the raw
   coordinate distance in the file; if your model is authored in inches, read it as inches.
+- **"A face" is a coplanar region, found by flood fill.** Curved surfaces are therefore many
+  faces, which is what you want when measuring a flat pad against a plate, but a fillet is
+  not a single face. Faces are grown along shared edges only, so a mesh with welded
+  vertices gives the best regions.
 - **Z-up is assumed.** Models authored Y-up will lie on their side. Axis guessing is
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one
@@ -145,21 +155,26 @@ node test/smoke.cjs
 
 `test/smoke.cjs` runs `lib/client.js` in a `vm` sandbox with a minimal React hooks stub and
 a replaceable `fetch`, and asserts the module contract, the viewer descriptor, a
-hand-built binary cube (12 facets, size 20), an ASCII single triangle, and the three
-error paths (garbage bytes, empty file, failed fetch). No browser needed. `.github/workflows/test.yml` runs the same on every push.
+hand-built binary cube (12 facets, size 20), an ASCII single triangle, the three
+error paths (garbage bytes, empty file, failed fetch), and the face-to-face geometry —
+plane fitting, point-to-triangle and triangle-to-triangle distance. No browser needed.
+`.github/workflows/test.yml` runs the same on every push.
 
 The end-to-end check uses a real renderer: `test/harness.html` mounts the component with
 React UMD builds, `test/shoot.cjs` screenshots it through a headless Electron
 (`--enable-unsafe-swiftshader --use-gl=swiftshader`). That is how the images above
 were produced.
 
-`test/measure.cjs` drives the same harness with synthetic pointer events: it enters
-measure mode, clicks two points on the cube, asserts the distance label reads a
-plausible number, and asserts Esc hides it again.
+`test/measure.cjs` drives the same harness with synthetic pointer events: it looks up the
+screen pixels of the two plate faces through the viewer's `_test` handle, clicks 测量,
+clicks both faces, and asserts the label reads `36.0 mm` with `面到面 · 平行面间距`, that
+`_test.measure().parallel` is true, and that Esc clears everything again. The fixture
+`test/fixtures/plates.stl` comes from `test/fixtures/make-plates.cjs`: two 80 x 60 mm
+plates 36 mm apart, the top one covering half of the bottom one.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
-  "test/harness.html?file=./fixtures/cube.stl" out.png
+  "test/harness.html?file=./fixtures/plates.stl" out.png
 ```
 
 ## 中文速览
@@ -171,7 +186,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 ```
 
 - 左键旋转 / 滚轮缩放 / 右键平移 / 双击复位（`R`、`0` 也复位）
-- 点「测量」（或按 `M`）后点模型表面两点，线段旁给出距离与 ΔX/ΔY/ΔZ；拖动仍可旋转，`Esc` 退出
+- 点「测量」（或按 `M`）后点两个平面：平行的两片报"平行面间距"（板的厚度、两件之间的空隙），不平行的报真实最短距离 + 夹角，线段旁带 ΔX/ΔY/ΔZ；拖动仍可旋转，`Esc` 退出
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物

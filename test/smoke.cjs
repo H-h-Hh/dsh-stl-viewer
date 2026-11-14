@@ -273,6 +273,43 @@ function serveBinary(buf) {
   text = textOf(await render({ mediaUrl: 'http://x/broken.stl', path: 'broken.stl', visible: true }))
   check('shows Retry', text.indexOf('Retry') >= 0, text.slice(0, 160))
 
+  console.log('\n[8] face-to-face geometry')
+  const geo = mod.__internals
+  // A 在 z=0 平躺，B 在 z=5 平躺（两者平行），C 立起来与 A 共用一条边
+  const pos = new Float32Array([
+    0, 0, 0, 10, 0, 0, 0, 10, 0,
+    0, 0, 5, 10, 0, 5, 0, 10, 5,
+    0, 0, 0, 10, 0, 0, 0, 0, 8
+  ])
+  const plane = geo.facePlane(pos, 0)
+  check(
+    'facePlane normal is unit length',
+    Math.abs(Math.hypot(plane.n[0], plane.n[1], plane.n[2]) - 1) < 1e-6,
+    JSON.stringify(plane.n)
+  )
+  check(
+    'facePlane centroid',
+    Math.abs(plane.c[0] - 10 / 3) < 1e-4 && Math.abs(plane.c[2]) < 1e-6,
+    JSON.stringify(plane.c)
+  )
+  const parallel = geo.triTriDistance(pos, 0, 9)
+  check('stacked parallel faces are 5 apart', Math.abs(parallel.d - 5) < 1e-3, String(parallel.d))
+  check(
+    'nearest pair sits on both faces',
+    Math.abs(parallel.a[2]) < 1e-4 && Math.abs(parallel.b[2] - 5) < 1e-4,
+    JSON.stringify([parallel.a, parallel.b])
+  )
+  const touching = geo.triTriDistance(pos, 0, 18)
+  check('faces sharing an edge measure 0', touching.d < 1e-3, String(touching.d))
+  const cp = geo.closestPointOnTri(2, 2, 9, pos, 0)
+  check(
+    'closest point projects onto the face',
+    Math.abs(cp[0] - 2) < 1e-4 && Math.abs(cp[1] - 2) < 1e-4 && Math.abs(cp[2]) < 1e-4,
+    JSON.stringify(cp)
+  )
+  const seg = geo.closestSegments([0, 0, 0], [10, 0, 0], [0, 3, 0], [10, 3, 0])
+  check('parallel segments are 3 apart', Math.abs(seg.d - 3) < 1e-4, String(seg.d))
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')
