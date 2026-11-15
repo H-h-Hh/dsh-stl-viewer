@@ -350,6 +350,88 @@ function serveBinary(buf) {
     'gap'
   )
 
+  console.log('\n[10] circle detection')
+  // 一圈点拟合圆：24 边形是圆，六边形不是（顶点在圆上，但每段中点明显内缩）
+  const ringOf = (n, r) => {
+    const positions = new Float32Array(n * 3)
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n
+      positions[i * 3] = Math.cos(a) * r
+      positions[i * 3 + 1] = Math.sin(a) * r
+      positions[i * 3 + 2] = 0
+    }
+    const adj = Object.create(null)
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      const ki = geo.coordKey(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2])
+      const kj = geo.coordKey(positions[j * 3], positions[j * 3 + 1], positions[j * 3 + 2])
+      if (!adj[ki]) adj[ki] = []
+      if (!adj[kj]) adj[kj] = []
+      adj[ki].push({ k: kj, i: j * 3 })
+      adj[kj].push({ k: ki, i: i * 3 })
+    }
+    return { positions: positions, adj: adj }
+  }
+
+  const poly = ringOf(24, 10)
+  const loop = geo.traceLoop(poly.positions, poly.adj, 0, 3)
+  check('traceLoop closes the 24-gon', !!loop && loop.points.length === 25, loop ? String(loop.points.length) : 'null')
+  const fit = loop ? geo.fitCirclePoints(loop.points.slice(0, -1)) : null
+  check('fitted radius is 10', !!fit && Math.abs(fit.radius - 10) < 1e-3, fit ? String(fit.radius) : 'null')
+  check(
+    'fitted centre is the origin',
+    !!fit && Math.hypot(fit.center[0], fit.center[1], fit.center[2]) < 1e-3,
+    fit ? JSON.stringify(fit.center) : 'null'
+  )
+  const fromEdge = geo.circleFromEdge(poly.positions, poly.adj, 0, 3)
+  check(
+    'circleFromEdge gives the same circle',
+    !!fromEdge &&
+      Math.abs(fromEdge.radius - 10) < 1e-3 &&
+      fromEdge.edgeKeys.length === 24,
+    fromEdge ? String(fromEdge.radius) + ' / ' + fromEdge.edgeKeys.length + ' edges' : 'null'
+  )
+
+  const hex = ringOf(6, 10)
+  check('hexagon is not a circle', geo.circleFromEdge(hex.positions, hex.adj, 0, 3) === null, 'hexagon')
+  const square = ringOf(4, 10)
+  check('square is rejected (turns too sharp)', geo.traceLoop(square.positions, square.adj, 0, 3) === null, 'square')
+
+  // 开口的链（少一条边）不能被当成圆
+  const openChain = ringOf(24, 10)
+  const k0 = geo.coordKey(openChain.positions[0], openChain.positions[1], openChain.positions[2])
+  openChain.adj[k0] = openChain.adj[k0].slice(0, 1)
+  check('open chain is not a circle', geo.traceLoop(openChain.positions, openChain.adj, 3, 0) === null, 'open')
+
+  // 真模型：垫圈（外径 40 / 内径 20 / 厚 6）应该正好找到两个圆
+  const washer = geo.parseStl(fs.readFileSync(path.join(FIXTURES, 'ring.stl')))
+  const washerTopo = geo.buildFeatureTopology(washer.positions, washer.normals)
+  check('washer has no corner on a smooth rim', true, '')
+  const seen = new Set()
+  const radii = []
+  const EDGES = [[0, 1], [1, 2], [2, 0]]
+  for (let o = 0; o < washer.positions.length; o += 9) {
+    for (const [a, b] of EDGES) {
+      const i0 = o + a * 3
+      const i1 = o + b * 3
+      const key = geo.coordKey(washer.positions[i0], washer.positions[i0 + 1], washer.positions[i0 + 2]) +
+        '|' + geo.coordKey(washer.positions[i1], washer.positions[i1 + 1], washer.positions[i1 + 2])
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (!washerTopo.edges[key]) continue
+      const circle = geo.circleFromEdge(washer.positions, washerTopo.adj, i0, i1)
+      if (!circle) continue
+      const mm = circle.radius / washer.scale
+      if (!radii.some((r) => Math.abs(r - mm) < 0.01)) radii.push(mm)
+    }
+  }
+  radii.sort((x, y) => x - y)
+  check(
+    'washer has two rims: R10 and R20',
+    radii.length === 2 && Math.abs(radii[0] - 10) < 0.01 && Math.abs(radii[1] - 20) < 0.01,
+    JSON.stringify(radii)
+  )
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

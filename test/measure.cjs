@@ -47,8 +47,7 @@ const MEASURE_SCRIPT = `
     event('pointerup', x, y)
     await sleep(90)
   }
-  const labelBox = () => Array.from(document.querySelectorAll('div'))
-    .find((d) => d.style && d.style.borderRadius === '7px' && /mm|°/.test(d.textContent))
+  const labelBox = () => document.querySelector('.dsh-stl-label')
 
   // 1) 撒一张网格，问 viewer 每个像素会吸附成什么，记下"确实会选中这块平面"的像素。
   //    吸附角点/棱的像素会被跳过，所以这仍然不依赖模型在屏幕上的位置。
@@ -110,12 +109,13 @@ const ESC_SCRIPT = `
   await sleep(200)
   const canvas = document.querySelector('canvas')
   const viewer = canvas.__dshStlViewer
-  const labelBox = Array.from(document.querySelectorAll('div'))
-    .find((d) => d.style && d.style.borderRadius === '7px')
+  const labelBox = document.querySelector('.dsh-stl-label')
+  const panel = document.querySelector('.dsh-stl-panel')
   const button = Array.from(document.querySelectorAll('button'))
     .find((b) => /测量|Measure/.test(b.textContent))
   return {
     labelHidden: labelBox ? labelBox.style.display === 'none' : true,
+    panelHidden: panel ? panel.style.display === 'none' : true,
     picks: viewer._test.picks().length,
     measure: viewer._test.measure(),
     measurePressed: button ? button.getAttribute('aria-pressed') : null

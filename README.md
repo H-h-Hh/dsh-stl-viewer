@@ -11,9 +11,9 @@ right-drag    pan (Shift + left-drag does the same; two-finger scroll zooms)
 double-click  reset the view (the 复位视角 button and the R / 0 keys do too)
 
 measure       click 测量 (or press M), then click two features — the cursor snaps to a
-              vertex, an edge or a whole face, the way Bambu Studio's measure tool does.
-              Shift-click takes an arbitrary point on the surface instead. Dragging still
-              orbits, Esc or 测量 again leaves the mode
+              vertex, an edge, a whole face or a circular rim, the way Bambu Studio's
+              measure tool does. Shift-click takes an arbitrary point on the surface
+              instead. Dragging still orbits, Esc or 测量 again leaves the mode
 ```
 
 <p align="center">
@@ -30,12 +30,12 @@ measure       click 测量 (or press M), then click two features — the cursor 
 <p align="center"><sub>No viewer installed: “此文件类型不支持预览 / 下载查看”. With the plugin: a 2,912-triangle enclosure lid and a 17,136-triangle stencil, both in the side card.</sub></p>
 
 <p align="center">
-  <img src="docs/preview/preview_points.jpg" width="100%" alt="Two snapped corners on a gear cover, reading 94.0 mm point to point">
+  <img src="docs/preview/preview_points.jpg" width="100%" alt="Two snapped corners on a plate, reading 58.0 mm point to point">
 </p>
 
 <p align="center"><sub>点到点: the cursor snaps to the corner you are aiming at, the picked point is drawn
-as a dot on the model, and the readout carries the straight distance plus ΔX / ΔY / ΔZ: 94.0 mm
-across two spokes of a 176 mm gear cover.</sub></p>
+as a dot on the model, and the readout carries the straight distance plus ΔX / ΔY / ΔZ: 58.0 mm
+across the diagonal of a plate, the two farthest corners the test could find.</sub></p>
 
 <p align="center">
   <img src="docs/preview/preview_faces.jpg" width="100%" alt="Two parallel plates highlighted, reading 36.0 mm face to face">
@@ -44,6 +44,15 @@ across two spokes of a 176 mm gear cover.</sub></p>
 <p align="center"><sub>面到面: click one face, then another. Coplanar triangles are flood-filled from the
 picked one, so you measure a real face — not one triangle — and two parallel faces give the
 gap between them: 36.0 mm here, with ΔX / ΔY / ΔZ underneath.</sub></p>
+
+<p align="center">
+  <img src="docs/preview/preview_circle.jpg" width="100%" alt="The inner rim of a washer picked as one circle, reading Ø 20.0 mm and R 10.0 mm in the corner panel">
+</p>
+
+<p align="center"><sub>圆: hover a rim and the whole rim is one pick — here the 20 mm bore of a
+washer, with the 40 mm outer rim available as a second, separate pick. The panel in the
+top-left corner gives Ø and R (and, while measuring, the pair type plus ΔX / ΔY / ΔZ), the
+way Bambu Studio does it.</sub></p>
 
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
@@ -75,6 +84,15 @@ gap between them: 36.0 mm here, with ΔX / ΔY / ΔZ underneath.</sub></p>
   not — and every readout carries ΔX / ΔY / ΔZ. Picking is a ray–triangle intersection
   against the real mesh, and the numbers come from the raw file coordinates rather than the
   normalised render space, so they are the same numbers you would measure in CAD
+- **Circles are picked as circles** — a rim on a bore, a boss or a cylinder is a chain of very
+  short creases, and edge snapping alone would only ever catch one facet of it. Hovering a
+  rim therefore traces the loop and fits a circle to it, which turns the whole rim into a
+  single pick: the 20 mm bore and the 40 mm outside of a washer are two separate features, so
+  an inner and an outer diameter can be read on their own. The fit rejects what is not round
+  (a hexagon is not a circle) and a chain that does not close
+- **A readout panel in the corner** — the picks are listed in the top-left corner the way
+  Bambu Studio does it: `直径 Ø 20.0 mm` and `半径 R 10.0 mm` for a circle, the pair type and
+  the distance for a measurement, with ΔX / ΔY / ΔZ underneath
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
   the app's dark/light theme instead of stamping a white box on it
 - **No build step, no dependencies** — `lib/client.js` *is* the artifact
@@ -155,6 +173,10 @@ generic blob.
   creases means an edge sweep over the mesh — 0.6 s for 47 k facets — so it happens the first
   time you hover in measure mode instead of when the file opens. Meshes above 400 k facets
   skip it and fall back to face picking.
+- **A circle is recognised, not assumed.** The rim must close (no turn sharper than 60° per
+  step) and fit a circle within 2% of its radius, checked at the vertices, at the midpoint of
+  every segment and against the rim plane — a 48-sided bore reads as round, a hexagon does not.
+  Circles ride on the same crease topology as snapping, so they also wait for that first hover.
 - **Z-up is assumed.** Models authored Y-up will lie on their side. Axis guessing is
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one
@@ -175,7 +197,9 @@ hand-built binary cube (12 facets, size 20), an ASCII single triangle, the three
 error paths (garbage bytes, empty file, failed fetch), the face-to-face geometry —
 plane fitting, point-to-triangle and triangle-to-triangle distance — and the feature
 topology: 8 corners and exactly 12 creases on a cube (the 6 in-plane diagonals do not
-count), plus point/segment/plane helpers. No browser needed.
+count), plus point/segment/plane helpers. The circle fit gets its own group: a 24-gon traces
+back to its start and fits r = 10, a hexagon, a square and an open chain are all rejected,
+and a washer fixture yields exactly two rims, R10 and R20. No browser needed.
 `.github/workflows/test.yml` runs the same on every push.
 
 The end-to-end check uses a real renderer: `test/harness.html` mounts the component with
@@ -188,16 +212,24 @@ screen pixels of the two plate faces through the viewer's `_test` handle, clicks
 clicks both faces, and asserts the label reads `36.0 mm` with `面到面 · 平行面间距`, that
 `_test.measure().parallel` is true, and that Esc clears everything again. The fixture
 `test/fixtures/plates.stl` comes from `test/fixtures/make-plates.cjs`: two 80 x 60 mm
-plates 36 mm apart, the top one covering half of the bottom one. A second fixture,
-`test/fixtures/plates.stl`, doubles as the snapping check: `test/snap-points.cjs` scans the
-canvas for pixels that snap to a `point`, picks the two farthest apart and asserts the label
-reads `58.0 mm` — the diagonal of the top plate — with ΔX 40 / ΔY 0 / ΔZ 42.
+plates 36 mm apart, the top one covering half of the bottom one. The same fixture doubles as
+the snapping check: `test/snap-points.cjs` scans the canvas for pixels that snap to a
+`point`, picks the two farthest apart and asserts the label reads `58.0 mm` — the diagonal of
+the top plate — with ΔX 40 / ΔY 0 / ΔZ 42.
+
+`test/circle.cjs` covers the rims, on a washer made by `test/fixtures/make-ring.cjs` (Ø40
+outside, Ø20 bore, 6 mm thick, 48 segments, normals written as zero so the plugin has to
+recompute them). It sweeps the canvas through `_test.pickFeature`, keeps the pixels that snap
+to a circle and asserts there are exactly two of them, then clicks the bore and reads the
+corner panel: `直径 Ø 20.0 mm` and `半径 R 10.0 mm`.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/snap-points.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/circle.cjs \
+  "test/harness.html?file=./fixtures/ring.stl" out.png
 ```
 
 ## 中文速览
@@ -209,7 +241,8 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 ```
 
 - 左键旋转 / 滚轮缩放 / 右键平移 / 双击复位（`R`、`0` 也复位）
-- 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
+- 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面 / 圆**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离、圆心距等，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
+- 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物
