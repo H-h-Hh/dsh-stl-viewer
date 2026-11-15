@@ -182,7 +182,9 @@ generic blob.
   The wall of a hole is treated as a circle too: it is grown as one smooth patch (across every
   edge that is not a crease), and its boundary has to be a circle whose axis the patch's own
   facets face sideways; a flat disc has both boundaries round but faces along the axis, so it
-  stays a face
+  stays a face. Small openings in that wall do not spoil it — a set-screw hole breaks the bore
+  into a ring with two big and two little loops, so the widest group of equal radii wins and the
+  patch still has to be a true cylinder (every vertex within 2% of one radius)
 - **Z-up is assumed.** Models authored Y-up will lie on their side. Axis guessing is
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one
@@ -236,7 +238,13 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/snap-points.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/circle.cjs \
   "test/harness.html?file=./fixtures/ring.stl" out.png
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/hub.cjs \\
+  "test/harness.html?file=./some/real/part.stl" out.png 47
 ```
+
+`test/hub.cjs` is the regression for bores that are not clean: the last argument is the
+diameter to look for in mm, and it clicks every circle it can find on a real part until one
+answers with that Ø. It needs a model of your own, so it stays out of CI.
 
 ## 中文速览
 
