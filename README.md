@@ -88,8 +88,10 @@ way Bambu Studio does it.</sub></p>
   short creases, and edge snapping alone would only ever catch one facet of it. Hovering a
   rim therefore traces the loop and fits a circle to it, which turns the whole rim into a
   single pick: the 20 mm bore and the 40 mm outside of a washer are two separate features, so
-  an inner and an outer diameter can be read on their own. The fit rejects what is not round
-  (a hexagon is not a circle) and a chain that does not close
+  an inner and an outer diameter can be read on their own. Clicking **inside** the hole works
+  the same way — the bore wall is one smooth region whose boundary is that circle, so you do
+  not have to land on the rim itself. The fit rejects what is not round (a hexagon is not a
+  circle) and a chain that does not close
 - **A readout panel in the corner** — the picks are listed in the top-left corner the way
   Bambu Studio does it: `直径 Ø 20.0 mm` and `半径 R 10.0 mm` for a circle, the pair type and
   the distance for a measurement, with ΔX / ΔY / ΔZ underneath
@@ -177,6 +179,10 @@ generic blob.
   step) and fit a circle within 2% of its radius, checked at the vertices, at the midpoint of
   every segment and against the rim plane — a 48-sided bore reads as round, a hexagon does not.
   Circles ride on the same crease topology as snapping, so they also wait for that first hover.
+  The wall of a hole is treated as a circle too: it is grown as one smooth patch (across every
+  edge that is not a crease), and its boundary has to be a circle whose axis the patch's own
+  facets face sideways; a flat disc has both boundaries round but faces along the axis, so it
+  stays a face
 - **Z-up is assumed.** Models authored Y-up will lie on their side. Axis guessing is
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one

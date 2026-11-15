@@ -432,6 +432,31 @@ function serveBinary(buf) {
     JSON.stringify(radii)
   )
 
+  // 往孔里点一下命中的是侧壁：整块侧壁（沿非折边扩散出来的光滑曲面）也要给出这个圆
+  const washerEdges = geo.buildEdgeMap(washer.positions)
+  const wallOf = (model, wantMm) => {
+    const edgeMap = model === washer ? washerEdges : geo.buildEdgeMap(model.positions)
+    const found = []
+    const step = Math.max(1, Math.floor(model.positions.length / 9 / 400))
+    for (let o = 0; o < model.positions.length; o += 9 * step) {
+      const c = geo.wallCircle(o, model.positions, model.normals, edgeMap)
+      if (!c) continue
+      const mm = c.radius / model.scale
+      if (!found.some((r) => Math.abs(r - mm) < 0.01)) found.push(mm)
+    }
+    found.sort((x, y) => x - y)
+    return found
+  }
+  const wallRadii = wallOf(washer)
+  check(
+    'hole wall is picked as its circle',
+    wallRadii.length === 2 && Math.abs(wallRadii[0] - 10) < 0.01 && Math.abs(wallRadii[1] - 20) < 0.01,
+    JSON.stringify(wallRadii)
+  )
+  // 平板不会因为边界是矩形或者法线顺着轴就被误判成圆
+  const plates = geo.parseStl(fs.readFileSync(path.join(FIXTURES, 'plates.stl')))
+  check('a flat plate is not a circle', wallOf(plates).length === 0, JSON.stringify(wallOf(plates)))
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')
