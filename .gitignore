@@ -17,3 +17,4 @@ desktop.ini
 # --- local models: the plugin ships no geometry, fixtures are generated ---
 *.step
 *.3mf
+!test/fixtures/*.step

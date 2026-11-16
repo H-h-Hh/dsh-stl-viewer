@@ -1,7 +1,7 @@
 name: test
 
-# Syntax check + the vm-sandbox smoke test, on every push and PR.
-# No build step exists, so this is the whole gate.
+# Syntax check, the vm-sandbox smoke test, and the host half against real
+# OpenCascade on every push and PR. No build step exists, so this is the whole gate.
 
 on:
   push:
@@ -21,7 +21,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - name: Install the one dependency
+        run: npm install --no-audit --no-fund
       - name: Syntax check
         run: node --check lib/client.js
       - name: Smoke test
         run: node test/smoke.cjs
+      - name: Host half (STEP conversion)
+        run: node test/host.mjs

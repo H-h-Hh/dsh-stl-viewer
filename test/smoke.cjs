@@ -483,6 +483,56 @@ function serveBinary(buf) {
   check('single triangle has no volume', Math.abs(triMesh.info.volume) < 1e-9, String(triMesh.info.volume))
   check('single triangle is not closed', triMesh.info.closed === false)
 
+  console.log('\n[12] STEP plumbing')
+  check(
+    'step files are spotted by extension',
+    geo.isStepPath('a/b/part.STEP') && geo.isStepPath('x.stp') && geo.isStepPath('y.iges') &&
+      geo.isStepPath('z.igs') && geo.isStepPath('w.brep'),
+    'step / stp / iges / igs / brep'
+  )
+  check(
+    'stl and look-alikes are not step',
+    !geo.isStepPath('cube.stl') && !geo.isStepPath('cube.step.bak') && !geo.isStepPath(''),
+    'only the five extensions'
+  )
+
+  // 造两块三角面，按宿主回包的格式打包，再解回来 —— 头和长度都得对得上
+  const packed = new ArrayBuffer(16 + 2 * 36)
+  const head = new DataView(packed)
+  head.setUint32(0, 0x4d485344, true)
+  head.setUint32(4, 1, true)
+  head.setUint32(8, 2, true)
+  head.setUint32(12, 3, true)
+  new Float32Array(packed, 16, 18).set([
+    0, 0, 0, 10, 0, 0, 10, 10, 0,
+    0, 0, 0, 10, 10, 0, 0, 10, 0
+  ])
+  const decoded = geo.decodeMesh(packed)
+  check(
+    'decodeMesh reads the header',
+    decoded.triangleCount === 2 && decoded.parts === 3,
+    JSON.stringify({ tris: decoded.triangleCount, parts: decoded.parts })
+  )
+  check('decodeMesh keeps 18 floats', decoded.positions.length === 18, String(decoded.positions.length))
+
+  const converted = geo.stepMesh(decoded)
+  check(
+    'stepMesh reads a 10 mm square',
+    Math.abs(converted.dims[0] - 10) < 0.01 && Math.abs(converted.dims[1] - 10) < 0.01,
+    JSON.stringify(converted.dims)
+  )
+  check('stepMesh area is 100 mm²', Math.abs(converted.info.area - 100) < 0.01, converted.info.area.toFixed(2))
+
+  const foreign = new ArrayBuffer(16)
+  new DataView(foreign).setUint32(0, 0x12345678, true)
+  let rejected = false
+  try {
+    geo.decodeMesh(foreign)
+  } catch (error) {
+    rejected = true
+  }
+  check('decodeMesh rejects a foreign buffer', rejected)
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

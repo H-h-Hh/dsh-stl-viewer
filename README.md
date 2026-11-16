@@ -1,8 +1,11 @@
 # dsh-stl-viewer
 
-An **STL 3D preview** for the [DeepSeek Harness](https://github.com/deepseek-ai/dsh) side card.
-Click any `.stl` in the [dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) file tree
-and the file renders in place, with the controls of a normal 3D viewer.
+An **STL / STEP 3D preview** for the [DeepSeek Harness](https://github.com/deepseek-ai/dsh) side card.
+Click any `.stl`, `.step`, `.stp`, `.iges`, `.igs` or `.brep` in the
+[dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) file tree and the file renders in
+place, with the controls of a normal 3D viewer. STL is parsed in the page; STEP and the other B-rep
+formats are tessellated by OpenCascade on the host, in a worker, and come back as the very same
+triangles the rest of the plugin already knows how to draw, measure and weigh.
 
 ```
 left-drag     orbit around the model
@@ -17,6 +20,9 @@ measure       click 测量 (or press M), then click two features — the cursor 
 
 view          the 视图 menu holds front / top / right / iso (keys 1 / 2 / 3 / 4, animated),
               wireframe (W), turntable (A) and "save image" — and a shortcut card (?)
+
+convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
+              OpenCascade in a worker; a small overlay counts the seconds and can cancel
 ```
 
 <p align="center">
@@ -65,14 +71,30 @@ way Bambu Studio does it.</sub></p>
 shortcut card in one menu, with the model's volume, surface area and watertightness in the
 bottom-left corner.</sub></p>
 
+<p align="center">
+  <img src="docs/preview/preview_step.jpg" width="100%" alt="A STEP file rendered in the side card: the same 17,136-triangle stencil, opened from stencil_top.step">
+</p>
+
+<p align="center"><sub>STEP: this is <code>stencil_top.step</code>, opened the same way. A B-rep file
+has no triangles in it — the host tessellated its surfaces with OpenCascade and the plugin drew
+the result, all 17,136 of them, which is exactly the count the STL export of the same part gives.
+Measuring, volume and the view menu work because what arrives is ordinary triangles.</sub></p>
+
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
 > formats such as `.stl`, `.obj`, `.step` fall through to “this file type cannot be
 > previewed”. This plugin registers an `stl` file viewer on the `betterSidebar`
-> service, so `.stl` stops being an opaque blob.
+> service, so `.stl` stops being an opaque blob — and it adds a host route so the
+> same viewer can open the B-rep formats too.
 
 ## Features
 
+- **STL, STEP, IGES and BREP** — STL is parsed in the page. The others are B-rep: there is no
+  triangle to draw until someone tessellates the surfaces, so the bytes are posted to a host
+  route, an OpenCascade WebAssembly build runs them in a `worker_threads` worker (the reader is
+  synchronous and would otherwise freeze the whole Host), and the result comes back as a packed
+  triangle buffer that the client decodes into the same pipeline STL uses. A 6 MB stencil:
+  17,136 triangles in about ten seconds, then cached by SHA-1
 - **Binary and ASCII STL** — sniffed, not guessed from the extension: exact `84 + 50·N`
   size match first, then an ASCII scan, then a tolerant binary pass for files with
   trailing bytes
@@ -130,6 +152,9 @@ bottom-left corner.</sub></p>
 - [dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) `>= 0.30.0` — it owns
   the file tree, the tabs and the `betterSidebar` service this plugin registers into
 - A browser with WebGL 1 (everything current; the software rasteriser is enough)
+- For STEP / IGES / BREP nothing else is needed: the host half pulls in
+  [`occt-import-js`](https://www.npmjs.com/package/occt-import-js), OpenCascade compiled to
+  WebAssembly, as its one dependency
 
 ## Install
 
@@ -154,10 +179,13 @@ The plugin is a bundle with a host half and a client half.
 
 | half | file | what it does |
 | --- | --- | --- |
-| host | `lib/index.js` | an empty Cordis plugin — it exists so the package enters the layer stack and its client script is served |
+| host | `lib/index.js` | registers `POST /dsh-stl-viewer/convert` on `ctx.webServer`, SHA-1s each body, serves repeats from an LRU cache and hands the rest to a one-shot worker |
+| worker | `lib/convert.worker.mjs` | `occt-import-js` reads STEP / IGES / BREP, tessellates, and transfers back a packed triangle buffer |
 | manifest | `package.json` | `dsh.bundle.patch` makes it a bundle, `exports["./client"]` + `dsh.client.platform: "web"` publish `/plugins/dsh-stl-viewer/client.js` |
 | patch | `cordis.patch.yml` | the one `insert:` line that puts the plugin in the layer stack |
-| client | `lib/client.js` | parse → normalise → WebGL → input → registration; a classic script, run by the DSH module loader, `require('react')` resolving to the host's React |
+| client | `lib/client.js` | parse (or fetch the converted mesh) → normalise → WebGL → input → registration; a classic script, run by the DSH module loader, `require('react')` resolving to the host's React |
+
+The viewer descriptor covers the extensions, one component for all of them:
 
 Registration is one call, and the model bytes come from the sidebar's own route:
 
@@ -166,7 +194,7 @@ ctx.betterSidebar.registerFileViewer({
   id: 'dsh-stl-viewer:stl',
   title: () => t('title'),
   icon: (size) => cubeIcon(size),
-  exts: ['stl'],
+  exts: ['stl', 'step', 'stp', 'iges', 'igs', 'brep'],
   priority: 10,
   fetchStrategy: 'mediaUrl',   // the host hands over the raw-bytes URL
   component: StlViewer
@@ -183,13 +211,24 @@ ctx.betterSidebar.registerFileViewer({
 | normalise | centre on the bbox, scale to a max edge of 2, per-facet normals, Z-up → Y-up |
 | render | WebGL 1, three lights + specular, one `drawArrays`, redraws only on demand |
 
-The plugin also registers a cube file icon for `.stl`, so the file tree stops showing a
-generic blob.
+STEP takes one extra hop, and the rest is shared:
+
+| step | detail |
+| --- | --- |
+| fetch | the same `mediaUrl` fetch — the sidebar's route already knows how to hand over the bytes |
+| post | `POST plugins/dsh-stl-viewer/convert` with the bytes and an `x-dsh-stl-name` header (a relative URL, so a reverse-proxied Host works too) |
+| tessellate | the host reads the body (128 MB cap), SHA-1s it, and runs OpenCascade in a fresh worker with `linearDeflection: 0.0012` of the bounding box |
+| pack | `'DSHM'` + version + triangle count + part count, then 9 float32 per triangle — 616 KB for the 17 k-triangle stencil above, instead of the 6 MB file |
+| decode | header check, one `Float32Array` view, then the same `finalizeMesh`, so measuring, circles, volume and the view menu see ordinary geometry |
+
+The plugin also registers a cube file icon for all six extensions, so the file tree stops
+showing a generic blob.
 
 ## Notes and limits
 
 - **Sizes carry no unit.** STL stores bare numbers; the `size X × Y × Z` readout is the
-  raw bounding box, not mm or inch.
+  raw bounding box, not mm or inch. A STEP file *does* declare a unit, so the converter is
+  asked for millimetres and the numbers are real mm.
 - **Volume and area inherit that assumption.** They are reported as `cm³` / `cm²`, i.e. the
   file's numbers read as mm. An inch-authored part will show numbers that are 16 387× off,
   which is the same caveat the measurement readout already carries.
@@ -222,14 +261,25 @@ generic blob.
   deliberately left out — a wrong guess is more confusing than a predictable default.
 - **Large files are parsed whole.** A few hundred thousand facets take 1–2 s and one
   `drawArrays` call; there is no streaming and no LOD.
-- **STL only.** `.obj`, `.glb`, `.3mf` are out of scope.
+- **STEP is tessellated on the host, once per file.** Conversion takes about a second per
+  megabyte (a 6 MB part: ~10 s, a 97 MB assembly: minutes), so a progress overlay counts the
+  seconds and offers cancel; the second open of the same bytes is instant, because the host
+  keeps an LRU of converted meshes (8 files / 192 MB). Detail is relative to the bounding box,
+  which is what keeps a 0.6 mm stencil and a 300 mm part both sensible — but it also means a
+  huge assembly comes out coarse.
+- **What arrives from STEP is triangles, not surfaces.** Measuring, circles and the volume
+  readout work on the tessellation, exactly as they do for STL: a bore is a bore because the
+  fitted rim really is round, not because the STEP says `CYLINDRICAL_SURFACE`.
+- `.obj`, `.glb`, `.3mf` are out of scope.
 - **No WebGL → a message, not a white panel.**
 
 ## Tests
 
 ```bash
+npm install            # only dependency: occt-import-js, used by the host half
 node --check lib/client.js
-node test/smoke.cjs
+node test/smoke.cjs    # client, in a vm sandbox, no browser
+node test/host.mjs     # host routes, real OpenCascade, real STEP fixture
 ```
 
 `test/smoke.cjs` runs `lib/client.js` in a `vm` sandbox with a minimal React hooks stub and
@@ -243,8 +293,19 @@ back to its start and fits r = 10, a hexagon, a square and an open chain are all
 and a washer fixture yields exactly two rims, R10 and R20. The last group checks the model
 stats against arithmetic: the 20 mm cube fixture is 8000 mm³ and 2400 mm², the washer matches
 π(R² − r²)h within the polygonal approximation, the two plates add up to 43200 mm³, and a
-single triangle has area but no volume and is not closed. No browser needed.
+single triangle has area but no volume and is not closed. The last group is the STEP plumbing:
+the five extensions are recognised, a hand-packed `'DSHM'` buffer decodes back to 18 floats, the
+decoded mesh reads as a 10 mm square of 100 mm², and a foreign magic number is rejected. No
+browser needed.
 `.github/workflows/test.yml` runs the same on every push.
+
+`test/host.mjs` loads `lib/index.js` as a plain module with a fake Cordis context, captures the
+two routes it registers, and drives them with Node-style request/response objects: the health
+route reports the five formats, `GET` on the converter is a 405, the junk-bytes case comes back
+as a JSON 500, and `test/fixtures/cube.step` — a 20 mm cube generated by
+`test/fixtures/make-step.cjs` — round-trips through the real worker and OpenCascade as exactly
+12 triangles, 20 × 20 × 20 mm and 8000 mm³, with the second request served from cache in under
+200 ms.
 
 The end-to-end check uses a real renderer: `test/harness.html` mounts the component with
 React UMD builds, `test/shoot.cjs` screenshots it through a headless Electron
@@ -290,9 +351,24 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/hub.cjs \\
 diameter to look for in mm, and it clicks every circle it can find on a real part until one
 answers with that Ø. It needs a model of your own, so it stays out of CI.
 
+`test/step.cjs` is the end-to-end for the new formats, and the only test that uses the real
+host: it starts an HTTP server inside the Electron main process that serves the harness and
+the plugin's own convert handler, loads the page over `http://`, lets the viewer fetch the
+STEP bytes and post them back to the host, and then reads the corner readout. With the fixture
+cube it asserts 12 triangles and 8.00 cm³; pointed at a real 6 MB part it reports 17,136
+triangles — the same count that part's STL export gives.
+
+```bash
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/step.cjs out.png ./fixtures/cube.step
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/step.cjs out.png ./_your_part.step
+```
+
+The second form is how the STEP screenshot above was made: copy a model into `test/` (the
+harness serves that directory) and pass it as a relative path.
+
 ## 中文速览
 
-给 DSH 侧边栏加一个 **STL 三维预览**：文件树里点开 `.stl`，右侧面板直接渲染，交互同常规 3D 看图。
+给 DSH 侧边栏加一个 **STL / STEP 三维预览**：文件树里点开 `.stl`、`.step`、`.stp`、`.iges`、`.igs`、`.brep`，右侧面板直接渲染，交互同常规 3D 看图。
 
 ```bash
 plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
@@ -302,12 +378,13 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面 / 圆**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离、圆心距等，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
+- **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消；同一个文件第二次打开直接命中缓存（按 SHA-1，8 个 / 192 MB）。6 MB 的钢网约 10 秒得到 17,136 个三角面，与同零件的 STL 导出完全一致，测量、体积、视图菜单照常可用
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 左下角除三角面数与尺寸外，还给**体积 / 表面积**和是否闭合（有破面标「未闭合」），数字按文件自身的坐标算
 - 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物
 
-尺寸没有单位（STL 不存单位），大文件整体解析（几十万面约 1–2 秒），`.obj/.glb/.3mf` 不在范围内。
+尺寸没有单位（STL 不存单位；STEP 自带单位，转换时按毫米要），大文件整体解析（几十万面约 1–2 秒），`.obj/.glb/.3mf` 不在范围内。
 
 ## License
 
