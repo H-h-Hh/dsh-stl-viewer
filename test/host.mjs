@@ -32,6 +32,11 @@ function fakeContext() {
       effect(fn) {
         disposers.push(fn())
       },
+      // Cordis 的依赖等待：服务已在时才回调，这里同步给到同一个 ctx。
+      inject(deps, callback) {
+        callback(this)
+        return () => {}
+      },
       webServer: {
         register(route) {
           routes.set(route.path, route)
