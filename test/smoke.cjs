@@ -457,6 +457,32 @@ function serveBinary(buf) {
   const plates = geo.parseStl(fs.readFileSync(path.join(FIXTURES, 'plates.stl')))
   check('a flat plate is not a circle', wallOf(plates).length === 0, JSON.stringify(wallOf(plates)))
 
+  console.log('\n[11] mesh info')
+  const cubeInfo = geo.meshInfo(cubeMesh.positions, cubeMesh.triangleCount, cubeMesh.scale)
+  check('cube volume is 8000 mm³', Math.abs(cubeInfo.volume - 8000) < 1, cubeInfo.volume.toFixed(2))
+  check('cube surface is 2400 mm²', Math.abs(cubeInfo.area - 2400) < 1, cubeInfo.area.toFixed(2))
+  check('cube is closed', cubeInfo.closed === true)
+
+  // 垫圈：π(R²−r²)h 与多边形近似的差在 1% 以内，顺便证明还原 scale 是对的
+  const ringVolume = Math.PI * (20 * 20 - 10 * 10) * 6
+  const ringErr = Math.abs(washer.info.volume - ringVolume) / ringVolume
+  check('washer volume matches π(R²−r²)h', ringErr < 0.01, washer.info.volume.toFixed(1) + ' mm³')
+  check('washer is closed', washer.info.closed === true)
+
+  const plateInfo = plates.info
+  check('two stacked plates volume is 43200 mm³', Math.abs(plateInfo.volume - 43200) < 1, plateInfo.volume.toFixed(1))
+  check('plates are closed', plateInfo.closed === true)
+
+  // 一个孤零零的三角面：面积算得出，体积为零，不闭合
+  const triAscii =
+    'solid t\nfacet normal 0 0 1\nouter loop\n' +
+    'vertex 0 0 0\nvertex 10 0 0\nvertex 0 20 0\n' +
+    'endloop\nendfacet\nendsolid t\n'
+  const triMesh = geo.parseStl(new Uint8Array(Buffer.from(triAscii, 'utf8')))
+  check('single triangle area is 100 mm²', Math.abs(triMesh.info.area - 100) < 0.01, triMesh.info.area.toFixed(2))
+  check('single triangle has no volume', Math.abs(triMesh.info.volume) < 1e-9, String(triMesh.info.volume))
+  check('single triangle is not closed', triMesh.info.closed === false)
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

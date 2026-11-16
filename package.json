@@ -1,7 +1,7 @@
 {
   "name": "dsh-stl-viewer",
-  "version": "1.4.2",
-  "description": "STL / 3D model preview in the DSH side card: registers an 'stl' file viewer on dsh-better-sidebar with an orbit camera (left-drag rotate, wheel zoom, right-drag pan, double-click reset), Bambu-style measuring that snaps to vertices, edges, faces and circles, and a corner panel that reads out diameters.",
+  "version": "1.5.0",
+  "description": "STL preview in the DSH side card: a hand-rolled WebGL orbit viewer (left-drag rotate, wheel zoom, right-drag pan), Bambu-style measuring that snaps to vertices, edges, faces and circles, a corner panel that reads out diameters, and volume / surface / view presets / wireframe / PNG export.",
   "keywords": [
     "dsh",
     "dsh-plugin",

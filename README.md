@@ -14,6 +14,9 @@ measure       click 测量 (or press M), then click two features — the cursor 
               vertex, an edge, a whole face or a circular rim, the way Bambu Studio's
               measure tool does. Shift-click takes an arbitrary point on the surface
               instead. Dragging still orbits, Esc or 测量 again leaves the mode
+
+view          the 视图 menu holds front / top / right / iso (keys 1 / 2 / 3 / 4, animated),
+              wireframe (W), turntable (A) and "save image" — and a shortcut card (?)
 ```
 
 <p align="center">
@@ -53,6 +56,14 @@ gap between them: 36.0 mm here, with ΔX / ΔY / ΔZ underneath.</sub></p>
 washer, with the 40 mm outer rim available as a second, separate pick. The panel in the
 top-left corner gives Ø and R (and, while measuring, the pair type plus ΔX / ΔY / ΔZ), the
 way Bambu Studio does it.</sub></p>
+
+<p align="center">
+  <img src="docs/preview/preview_views.jpg" width="100%" alt="The view menu open over a 49,792-triangle gear cover in isometric view">
+</p>
+
+<p align="center"><sub>视图: front / top / right / iso, wireframe, turntable, save image and the
+shortcut card in one menu, with the model's volume, surface area and watertightness in the
+bottom-left corner.</sub></p>
 
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
@@ -95,6 +106,20 @@ way Bambu Studio does it.</sub></p>
 - **A readout panel in the corner** — the picks are listed in the top-left corner the way
   Bambu Studio does it: `直径 Ø 20.0 mm` and `半径 R 10.0 mm` for a circle, the pair type and
   the distance for a measurement, with ΔX / ΔY / ΔZ underneath
+- **Volume, surface and watertightness** — the corner readout also answers the first
+  question a print checks: how much material is this, and is the mesh closed? Volume comes
+  from the divergence theorem, area from the facet areas, and both are divided back out of
+  the render normalisation, so they are the file's own numbers (`cm³` / `cm²` under the mm
+  assumption). "Not closed" means some edge belongs to a single facet — a hole in the shell
+- **Standard views, animated** — front / top / right / iso on keys `1`–`4`, with a 260 ms
+  eased transition that moves the orbit angles only, so your zoom and focus point survive
+- **Wireframe and turntable** — `W` and `A`, or the same rows in the view menu. Wireframe
+  draws the triangle edges over a dimmed solid (with polygon offset, so the lines do not
+  z-fight), which is how you see how a model was tessellated
+- **Save the picture** — the current frame as a PNG named after the file. It is drawn on
+  demand before `toDataURL`, not grabbed from a stale buffer
+- **Menus, not a button wall** — three buttons stay on the model, the 视图 menu holds the
+  rest, and `?` opens a card listing every gesture and key
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
   the app's dark/light theme instead of stamping a white box on it
 - **No build step, no dependencies** — `lib/client.js` *is* the artifact
@@ -165,6 +190,14 @@ generic blob.
 
 - **Sizes carry no unit.** STL stores bare numbers; the `size X × Y × Z` readout is the
   raw bounding box, not mm or inch.
+- **Volume and area inherit that assumption.** They are reported as `cm³` / `cm²`, i.e. the
+  file's numbers read as mm. An inch-authored part will show numbers that are 16 387× off,
+  which is the same caveat the measurement readout already carries.
+- **"Closed" is about holes, not about manifoldness.** A mesh counts as closed when no edge
+  belongs to just one facet. Edges shared by three or more facets (self-intersections,
+  duplicated coplanar facets) do not make it "not closed", because there is no hole for
+  resin or filament to leak through — they are a different kind of problem, and the viewer
+  does not claim to find them.
 - **Measurements say `mm`, because CAD STL almost always is.** The number is the raw
   coordinate distance in the file; if your model is authored in inches, read it as inches.
 - **"A face" is a coplanar region, found by flood fill.** Curved surfaces are therefore many
@@ -207,7 +240,10 @@ plane fitting, point-to-triangle and triangle-to-triangle distance — and the f
 topology: 8 corners and exactly 12 creases on a cube (the 6 in-plane diagonals do not
 count), plus point/segment/plane helpers. The circle fit gets its own group: a 24-gon traces
 back to its start and fits r = 10, a hexagon, a square and an open chain are all rejected,
-and a washer fixture yields exactly two rims, R10 and R20. No browser needed.
+and a washer fixture yields exactly two rims, R10 and R20. The last group checks the model
+stats against arithmetic: the 20 mm cube fixture is 8000 mm³ and 2400 mm², the washer matches
+π(R² − r²)h within the polygonal approximation, the two plates add up to 43200 mm³, and a
+single triangle has area but no volume and is not closed. No browser needed.
 `.github/workflows/test.yml` runs the same on every push.
 
 The end-to-end check uses a real renderer: `test/harness.html` mounts the component with
@@ -231,12 +267,20 @@ recompute them). It sweeps the canvas through `_test.pickFeature`, keeps the pix
 to a circle and asserts there are exactly two of them, then clicks the bore and reads the
 corner panel: `直径 Ø 20.0 mm` and `半径 R 10.0 mm`.
 
+`test/view.cjs` drives the view menu through its real DOM: it opens 视图, clicks 俯视 and
+asserts the camera really is looking down (pitch 1.5607) with the zoom untouched, turns
+wireframe on, starts and stops the turntable (checking the yaw moved while it ran), grabs a
+snapshot and asserts the result is a PNG data URL, opens the shortcut card and closes it
+again, and finally presses `2` on the focused canvas and expects the same top view.
+
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/snap-points.cjs \
   "test/harness.html?file=./fixtures/plates.stl" out.png
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/circle.cjs \
+  "test/harness.html?file=./fixtures/ring.stl" out.png
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/view.cjs \
   "test/harness.html?file=./fixtures/ring.stl" out.png
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/hub.cjs \\
   "test/harness.html?file=./some/real/part.stl" out.png 47
@@ -259,6 +303,8 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
+- 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
+- 左下角除三角面数与尺寸外，还给**体积 / 表面积**和是否闭合（有破面标「未闭合」），数字按文件自身的坐标算
 - 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物
 
 尺寸没有单位（STL 不存单位），大文件整体解析（几十万面约 1–2 秒），`.obj/.glb/.3mf` 不在范围内。
