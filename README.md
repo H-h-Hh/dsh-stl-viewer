@@ -164,8 +164,8 @@ In DSH, or from the plugin manager page → *install from a local directory*:
 plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 ```
 
-Then reload the page. Open any `.stl` from the file tree; if the file is already open in
-a tab as an unsupported binary, close that tab and click the file again.
+Then reload the page. Open any `.stl` or `.step` from the file tree; if the file is already
+open in a tab as an unsupported binary, close that tab and click the file again.
 
 Uninstall:
 
@@ -184,6 +184,11 @@ The plugin is a bundle with a host half and a client half.
 | manifest | `package.json` | `dsh.bundle.patch` makes it a bundle, `exports["./client"]` + `dsh.client.platform: "web"` publish `/plugins/dsh-stl-viewer/client.js` |
 | patch | `cordis.patch.yml` | the one `insert:` line that puts the plugin in the layer stack |
 | client | `lib/client.js` | parse (or fetch the converted mesh) → normalise → WebGL → input → registration; a classic script, run by the DSH module loader, `require('react')` resolving to the host's React |
+
+The host half mounts its routes inside `ctx.inject(['webServer'], …)`. Cordis refuses to read
+`ctx.webServer` before the dependency is declared — and it throws at activation, not at call
+time — while an object-level `inject` would defer the whole `apply()` until the service exists.
+Wrapping just the mount block defers nothing else.
 
 The viewer descriptor covers the extensions, one component for all of them:
 
