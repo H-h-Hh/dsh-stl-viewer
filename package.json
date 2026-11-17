@@ -1,6 +1,6 @@
 {
   "name": "dsh-stl-viewer",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "STL / STEP preview in the DSH side card: a hand-rolled WebGL orbit viewer (left-drag rotate, wheel zoom, right-drag pan) that reads STL directly and tessellates STEP, IGES and BREP through OpenCascade in a host worker, with Bambu-style measuring that snaps to vertices, edges, faces and circles, a corner panel that reads out diameters, and volume / surface / view presets / wireframe / PNG export.",
   "keywords": [
     "dsh",

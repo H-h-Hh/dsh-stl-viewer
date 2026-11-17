@@ -52,10 +52,11 @@ function fakeContext() {
 }
 
 /** 把字节做成 Node 风格的请求对象。 */
-function fakeRequest(method, bytes, name) {
+function fakeRequest(method, bytes, name, url) {
   const stream = Readable.from(bytes ? [bytes] : [])
   stream.method = method
   stream.headers = name ? { 'x-dsh-stl-name': name } : {}
+  stream.url = url || '/dsh-stl-viewer/convert'
   return stream
 }
 
@@ -204,5 +205,27 @@ test('a file that is not STEP data fails with a JSON error', async () => {
   assert.equal(response.captured.status, 500)
   const body = JSON.parse(String(response.captured.body))
   assert.ok(body.error.length > 0)
+})
+
+test('the format comes from ?ext=, not from the file name', async () => {
+  const { ctx, routes } = fakeContext()
+  apply(ctx)
+  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+
+  // 同一份 STEP 字节：说自己是 step 就成功，说自己是 iges 就该被 OCCT 拒掉。
+  // 这也说明客户端为什么只发扩展名——文件名可以是中文，header 发不出去。
+  const good = fakeResponse()
+  await routes
+    .get('/dsh-stl-viewer/convert')
+    .handler(fakeRequest('POST', bytes, '桨罩大轮.step', '/dsh-stl-viewer/convert?ext=step'), good)
+  assert.equal(good.captured.status, 200)
+
+  // 换一个字节串，免得撞上按 SHA-1 的缓存：缓存只认字节，不认 format。
+  const other = Buffer.concat([bytes, Buffer.from('\n')])
+  const wrong = fakeResponse()
+  await routes
+    .get('/dsh-stl-viewer/convert')
+    .handler(fakeRequest('POST', other, '', '/dsh-stl-viewer/convert?ext=iges'), wrong)
+  assert.equal(wrong.captured.status, 500)
 })
 
