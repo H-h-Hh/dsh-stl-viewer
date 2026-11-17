@@ -12,7 +12,8 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, unlinkSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import { dirname, join } from 'node:path'
@@ -158,6 +159,18 @@ test('a 20 mm STEP cube comes back as 12 triangles of the right size', async () 
   const { ctx, routes } = fakeContext()
   apply(ctx)
   const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+
+  // 先把这个文件从磁盘缓存里摘掉，让本次真的走一遍 OpenCascade。
+  const health = fakeResponse()
+  await routes.get('/dsh-stl-viewer/step').handler(fakeRequest('GET'), health)
+  const cacheDir = JSON.parse(String(health.captured.body)).cacheDir
+  const key = createHash('sha1').update(bytes).digest('hex')
+  try {
+    unlinkSync(join(cacheDir, key + '.dsm'))
+  } catch (error) {
+    // 本来就没有
+  }
+
   const response = fakeResponse()
   await routes
     .get('/dsh-stl-viewer/convert')
@@ -195,8 +208,72 @@ test('the second request for the same bytes is served from cache', async () => {
   assert.ok(elapsed < 200, 'cache hit took ' + elapsed + ' ms')
 })
 
-test('a file that is not STEP data fails with a JSON error', async () => {
+test('the mesh is written to the disk cache', async () => {
   const { ctx, routes } = fakeContext()
+  apply(ctx)
+  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+  const response = fakeResponse()
+  await routes.get('/dsh-stl-viewer/convert').handler(fakeRequest('POST', bytes, 'cube.step'), response)
+  assert.equal(response.captured.status, 200)
+
+  const health = fakeResponse()
+  await routes.get('/dsh-stl-viewer/step').handler(fakeRequest('GET'), health)
+  const info = JSON.parse(String(health.captured.body))
+  assert.ok(info.cacheDir, 'health names the cache directory')
+
+  // 转换是异步落盘的，给它一点时间；文件应当以 DSHM 头开头。
+  let names = []
+  for (let attempt = 0; attempt < 40 && !names.length; attempt++) {
+    try {
+      names = readdirSync(info.cacheDir).filter((name) => name.endsWith('.dsm'))
+    } catch (error) {
+      // 目录还没建出来
+    }
+    if (!names.length) await new Promise((done) => setTimeout(done, 25))
+  }
+  assert.ok(names.length > 0, 'at least one cache file in ' + info.cacheDir)
+  const first = readFileSync(join(info.cacheDir, names[0]))
+  assert.equal(first.toString('latin1', 0, 4), 'DSHM')
+  assert.equal(first.length, response.captured.body.length)
+})
+
+test('a fresh context, as after a restart, is served from the disk cache', async () => {
+  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+  const warm = fakeContext()
+  apply(warm.ctx)
+  const first = fakeResponse()
+  await warm.routes.get('/dsh-stl-viewer/convert').handler(fakeRequest('POST', bytes, 'cube.step'), first)
+  assert.equal(first.captured.status, 200)
+
+  // 等落盘
+  const health = fakeResponse()
+  await warm.routes.get('/dsh-stl-viewer/step').handler(fakeRequest('GET'), health)
+  const cacheDir = JSON.parse(String(health.captured.body)).cacheDir
+  for (let attempt = 0; attempt < 40; attempt++) {
+    let found = false
+    try {
+      found = readdirSync(cacheDir).some((name) => name.endsWith('.dsm'))
+    } catch (error) {
+      found = false
+    }
+    if (found) break
+    await new Promise((done) => setTimeout(done, 25))
+  }
+
+  const cold = fakeContext()
+  apply(cold.ctx)
+  const started = Date.now()
+  const second = fakeResponse()
+  await cold.routes.get('/dsh-stl-viewer/convert').handler(fakeRequest('POST', bytes, 'cube.step'), second)
+  const elapsed = Date.now() - started
+
+  assert.equal(second.captured.status, 200)
+  assert.equal(second.captured.headers['x-dsh-stl-tris'], '12')
+  assert.ok(second.captured.body.equals(first.captured.body), 'same bytes as the fresh conversion')
+  assert.ok(elapsed < 400, 'disk hit took ' + elapsed + ' ms')
+})
+
+test('a file that is not STEP data fails with a JSON error', async () => {  const { ctx, routes } = fakeContext()
   apply(ctx)
   const response = fakeResponse()
   await routes
