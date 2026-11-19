@@ -55,8 +55,20 @@ const VIEW_SCRIPT = `
     return nodes.length ? nodes[nodes.length - 1].textContent : ''
   }
 
+  const axisState = () => {
+    const svg = document.querySelector('.dsh-stl-axis')
+    if (!svg) return null
+    const lines = Array.from(svg.querySelectorAll('line')).map((l) => ({
+      dx: Number(l.getAttribute('x2')) - Number(l.getAttribute('x1')),
+      dy: Number(l.getAttribute('y2')) - Number(l.getAttribute('y1'))
+    }))
+    const labels = Array.from(svg.querySelectorAll('text')).map((t) => t.textContent)
+    return { labels, lines, hidden: svg.style.display === 'none' }
+  }
+
   const before = test.camera()
   const stats = statsText()
+  const axisBefore = axisState()
 
   // 1) 视图 → 俯视，镜头要转到正上方，而且缩放不能变
   await openMenu()
@@ -65,6 +77,7 @@ const VIEW_SCRIPT = `
   topRow.click()
   await sleep(600)
   const afterTop = test.camera()
+  const axisTop = axisState()
   const menuClosedAfterPick = !menu()
 
   // 2) 视图 → 线框
@@ -110,7 +123,19 @@ const VIEW_SCRIPT = `
   }
   const helpClosed = !document.querySelector('.dsh-stl-help')
 
-  // 6) 快捷键 2 也应当转到俯视（画布聚焦时）
+  // 6) 坐标轴：菜单里能关，G 键能再开
+  await openMenu()
+  const axesRow = rowBy(/坐标轴|Axes/)
+  if (!axesRow) return { error: 'no axes row' }
+  axesRow.click()
+  await sleep(200)
+  const axisOff = !test.axis() && !!axisState() && axisState().hidden
+  canvas.focus()
+  canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true }))
+  await sleep(200)
+  const axisBackOn = test.axis() && !axisState().hidden
+
+  // 7) 快捷键 2 也应当转到俯视（画布聚焦时）
   canvas.focus()
   viewer.setView('iso')
   await sleep(400)
@@ -136,6 +161,13 @@ const VIEW_SCRIPT = `
     helpHasShortcuts: /快捷键|Shortcuts/.test(helpText),
     helpClosed: helpClosed,
     key2IsUp: Math.abs(afterKey2.pitch - 1.5607) < 0.02,
+    axisLabels: axisBefore ? axisBefore.labels : null,
+    axisTopLabels: axisTop ? axisTop.labels : null,
+    // 俯视时 Y 是朝向镜头的轴，屏幕上的长度应当缩成 0（画成圆环）
+    axisTopYFlat: !!axisTop && Math.hypot(axisTop.lines[1].dx, axisTop.lines[1].dy) < 1,
+    axisTopXRight: !!axisTop && axisTop.lines[0].dx > 10,
+    axisOff: axisOff,
+    axisBackOn: axisBackOn,
     stats: stats
   }
 })()
