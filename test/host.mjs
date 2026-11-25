@@ -88,10 +88,16 @@ function decode(buffer) {
   const count = view.getUint32(8, true)
   const parts = view.getUint32(12, true)
   assert.equal(magic, 0x4d485344, 'magic should be DSHM')
-  assert.equal(version, 1, 'format version')
-  assert.equal(buffer.byteLength, 16 + count * 36, 'packed length')
-  const positions = new Float32Array(buffer.buffer, buffer.byteOffset + 16, count * 9)
-  return { count, parts, positions }
+  assert.equal(version, 2, 'format version')
+  const tableLength = view.getUint32(16, true)
+  const offset = 20 + ((tableLength + 3) & ~3)
+  assert.equal(buffer.byteLength, offset + count * 36, 'packed length')
+  const table = JSON.parse(
+    new TextDecoder().decode(new Uint8Array(buffer.buffer, buffer.byteOffset + 20, tableLength)).replace(/\u0000+$/, '')
+  )
+  assert.equal(table.parts.length, parts, 'part table length')
+  const positions = new Float32Array(buffer.buffer, buffer.byteOffset + offset, count * 9)
+  return { count, parts, names: table.parts, positions }
 }
 
 /** 散度定理求体积（mm³）。 */
@@ -180,9 +186,17 @@ test('a 20 mm STEP cube comes back as 12 triangles of the right size', async () 
   assert.equal(response.captured.headers['content-type'], 'application/octet-stream')
   assert.equal(response.captured.headers['x-dsh-stl-tris'], '12')
 
-  const { count, parts, positions } = decode(response.captured.body)
+  const { count, parts, positions, names } = decode(response.captured.body)
   assert.equal(count, 12, 'a cube tessellates to 12 triangles')
   assert.ok(parts >= 1, 'at least one part')
+  // 每个面是独立的 Solid，所以立方体会被拆成 6 个零件；零件表要真的带上范围
+  assert.equal(names.length, parts, 'one table row per part')
+  let covered = 0
+  for (const row of names) {
+    assert.ok(typeof row.start === 'number' && row.count > 0, 'part range ' + JSON.stringify(row))
+    covered += row.count
+  }
+  assert.equal(covered, count, 'the rows cover every triangle')
   const dims = bounds(positions)
   for (const d of dims) assert.ok(Math.abs(d - 20) < 0.01, 'dimension ' + d + ' should be 20')
   const vol = volume(positions, count)

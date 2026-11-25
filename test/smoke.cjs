@@ -514,11 +514,50 @@ function serveBinary(buf) {
   ])
   const decoded = geo.decodeMesh(packed)
   check(
-    'decodeMesh reads the header',
-    decoded.triangleCount === 2 && decoded.parts === 3,
-    JSON.stringify({ tris: decoded.triangleCount, parts: decoded.parts })
+    'a v1 header falls back to one part',
+    decoded.triangleCount === 2 && decoded.parts.length === 1 &&
+      decoded.parts[0].start === 0 && decoded.parts[0].count === 2,
+    JSON.stringify({ tris: decoded.triangleCount, parts: decoded.parts.length })
   )
   check('decodeMesh keeps 18 floats', decoded.positions.length === 18, String(decoded.positions.length))
+
+  // v2：头后面跟一段零件表 JSON，客户端靠它把三角形切成零件
+  const table = Buffer.from(
+    JSON.stringify({ parts: [{ name: 'lower', start: 0, count: 1 }, { name: 'upper', start: 1, count: 1 }] }),
+    'utf8'
+  )
+  const padded = (table.length + 3) & ~3
+  const packed2 = new ArrayBuffer(20 + padded + 2 * 36)
+  const head2 = new DataView(packed2)
+  head2.setUint32(0, 0x4d485344, true)
+  head2.setUint32(4, 2, true)
+  head2.setUint32(8, 2, true)
+  head2.setUint32(12, 2, true)
+  head2.setUint32(16, table.length, true)
+  new Uint8Array(packed2, 20, table.length).set(table)
+  new Float32Array(packed2, 20 + padded, 18).set([
+    0, 0, 0, 10, 0, 0, 10, 10, 0,
+    0, 0, 0, 10, 10, 0, 0, 10, 0
+  ])
+  const decoded2 = geo.decodeMesh(packed2)
+  check(
+    'a v2 header carries the part table',
+    decoded2.parts.length === 2 && decoded2.parts[0].name === 'lower' &&
+      decoded2.parts[1].start === 1 && decoded2.positions.length === 18,
+    JSON.stringify(decoded2.parts)
+  )
+
+  const spread = geo.describeParts(decoded2.positions, decoded2.parts)
+  check(
+    'each part is described separately',
+    spread.length === 2 && spread[0].count === 1 && spread[1].start === 1,
+    JSON.stringify(spread.map((p) => ({ s: p.start, c: p.count })))
+  )
+  check(
+    'a part gets a centre, a radius and an automatic axis',
+    spread.every((p) => p.radius > 0 && typeof p.flat === 'number' && p.axis === -1 && p.speed === 0),
+    JSON.stringify({ r: spread[0].radius, flat: spread[0].flat })
+  )
 
   const converted = geo.stepMesh(decoded)
   check(

@@ -5,7 +5,8 @@ Click any `.stl`, `.step`, `.stp`, `.iges`, `.igs` or `.brep` in the
 [dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) file tree and the file renders in
 place, with the controls of a normal 3D viewer. STL is parsed in the page; STEP and the other B-rep
 formats are tessellated by OpenCascade on the host, in a worker, and come back as the very same
-triangles the rest of the plugin already knows how to draw, measure and weigh.
+triangles the rest of the plugin already knows how to draw, measure and weigh. An assembly keeps
+its parts apart: explode it to see how it goes together, then spin any single part to watch it turn.
 
 ```
 left-drag     orbit around the model — freely: the camera tumbles 360° in any direction,
@@ -22,6 +23,10 @@ measure       click 测量 (or press M), then click two features — the cursor 
 view          the 视图 menu holds front / top / right / iso (keys 1 / 2 / 3 / 4, animated),
               wireframe (W), turntable (A), the XYZ triad (G) and "save image" — plus a
               shortcut card (?)
+
+motion        click 运动, then drag the 分解 slider to pull the parts apart (or press
+              play and let it animate). Click a part in the list — or on the model — and
+              give it a spin rate and an axis. Esc or 运动 again leaves the mode
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
@@ -82,6 +87,14 @@ has no triangles in it — the host tessellated its surfaces with OpenCascade an
 the result, all 17,136 of them, which is exactly the count the STL export of the same part gives.
 Measuring, volume and the view menu work because what arrives is ordinary triangles.</sub></p>
 
+<p align="center">
+  <img src="docs/preview/preview_motion.jpg" width="100%" alt="A three-part gear assembly exploded, with two parts spinning">
+</p>
+
+<p align="center"><sub>运动: the same 55,130-triangle assembly, 3 parts, pulled apart 70 % — the two gears
+are turning at 24 rpm about Z while the panel lists them. Explode and per-part rotation are baked
+into the vertex buffers, so picking, measuring and the readouts keep working on the moved geometry.</sub></p>
+
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
 > formats such as `.stl`, `.obj`, `.step` fall through to “this file type cannot be
@@ -140,6 +153,13 @@ Measuring, volume and the view menu work because what arrives is ordinary triang
   from the divergence theorem, area from the facet areas, and both are divided back out of
   the render normalisation, so they are the file's own numbers (`cm³` / `cm²` under the mm
   assumption). "Not closed" means some edge belongs to a single facet — a hole in the shell
+- **Explode an assembly, spin one part** — a STEP file that holds several solids becomes several
+  parts. Explode slides them apart along the direction from the origin to each part's centre, and
+  any part can be given a rotation rate and an axis (Auto picks the part's flattest axis, which is
+  the natural axis for a plate or a wheel). The transform is baked into the positional and normal
+  buffers and only the changed part is re-uploaded with `bufferSubData`, so hit-testing, measuring,
+  wireframe and the volume readout all see the geometry where it currently is. Masks, summary
+  panels and the readout stay in the same place as before
 - **Standard views, animated** — front / top / right / iso on keys `1`–`4`, with a 260 ms
   eased transition that moves the orbit angles only, so your zoom and focus point survive
 - **Wireframe and turntable** — `W` and `A`, or the same rows in the view menu. Wireframe
@@ -294,6 +314,14 @@ showing a generic blob.
 - **What arrives from STEP is triangles, not surfaces.** Measuring, circles and the volume
   readout work on the tessellation, exactly as they do for STL: a bore is a bore because the
   fitted rim really is round, not because the STEP says `CYLINDRICAL_SURFACE`.
+- **A part is one solid OpenCascade hands back, and its name is a placeholder.** STEP files carry
+  a name per product, but the tessellator's mesh names are things like `Open CASCADE STEP
+  translator 7.9 1.1`, so the panel says 零件 1, 零件 2 … and keeps the original string as a
+  tooltip. An STL has no parts at all: the whole file is one, so exploding it would do nothing
+  and the slider stays at zero — it can still be given a spin rate.
+- **Motion is frozen while measuring.** Measuring builds edge, corner and circle topology from the
+  vertex positions; a spinning part would invalidate it every frame, so entering measure mode stops
+  every spin and collapses nothing else, and the topology is rebuilt on the next hover.
 - `.obj`, `.glb`, `.3mf` are out of scope.
 - **No WebGL → a message, not a white panel.**
 
@@ -395,6 +423,20 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/step.cjs out.png ./_
 The second form is how the STEP screenshot above was made: copy a model into `test/` (the
 harness serves that directory) and pass it as a relative path.
 
+`test/motion.cjs` is the assembly end-to-end. It runs the real harness against the real host
+converter, opens 运动, checks that a click on the model selects the part under the cursor, drags
+the explode slider and asserts the vertex buffer actually moved, gives a part 60 rpm, waits and
+reads the angle back, switches the axis to Z, resets everything, and closes the panel with Esc.
+Typical output on the three-part gear fixture: `parts: 3`, `clickSelects: true`, `moved: 0.698`,
+`spun: 4.40` radians. It needs Electron, so it stays out of CI.
+
+```bash
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/motion.cjs \
+  "test/harness.html?file=./fixtures/cube.step" out.png
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/motion.cjs \
+  "test/harness.html?file=./_your_assembly.step" out.png
+```
+
 ## 中文速览
 
 给 DSH 侧边栏加一个 **STL / STEP 三维预览**：文件树里点开 `.stl`、`.step`、`.stp`、`.iges`、`.igs`、`.brep`，右侧面板直接渲染，交互同常规 3D 看图。
@@ -408,6 +450,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致
+- **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**（自动 / X / Y / Z）。变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动，不是另一个"摆设用的视图"。进测量模式会先冻结所有转动并重建拓扑
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关。字母标的是**模型自己的轴**——零件在 CAD 里 Z 向上，屏幕上就是蓝 Z 朝上（渲染时几何被转成 Y-up，三脚标画之前会把这步转回去）
