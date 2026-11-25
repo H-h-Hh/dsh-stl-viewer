@@ -149,7 +149,9 @@ Measuring, volume and the view menu work because what arrives is ordinary triang
   demand before `toDataURL`, not grabbed from a stale buffer
 - **An XYZ triad** — bottom right, red / green / blue, drawn as SVG so the letters stay
   crisp: it turns with the camera, dims the axis pointing away from you, and draws the axis
-  pointing at you as a ring. `G` or the view menu hides it
+  pointing at you as a ring. The letters follow the *model's* axes, so for a Z-up CAD part
+  blue Z points up on screen — the viewer rotates the geometry Z-up → Y-up internally, and
+  the triad undoes that rotation before drawing. `G` or the view menu hides it
 - **Menus, not a button wall** — three buttons stay on the model, the 视图 menu holds the
   rest, and `?` opens a card listing every gesture and key
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
@@ -357,7 +359,9 @@ snapshot and asserts the result is a PNG data URL, opens the shortcut card and c
 again, presses `2` on the focused canvas and expects the same top view, and finally drags the
 canvas 400 px upwards with synthetic pointer events: the camera must end up **under** the model
 (`dir[1] < -0.3`), the triad must still read X / Y / Z, and dragging back must return to the
-starting direction — the free-tumble regression.
+starting direction — the free-tumble regression. The same run checks the triad against the
+model axes: looking straight down, the blue Z line must collapse into a ring
+(`axisTopZFlat`), while red X still goes right and green Y goes up the screen.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
@@ -406,7 +410,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
-- 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关
+- 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关。字母标的是**模型自己的轴**——零件在 CAD 里 Z 向上，屏幕上就是蓝 Z 朝上（渲染时几何被转成 Y-up，三脚标画之前会把这步转回去）
 - 左下角除三角面数与尺寸外，还给**体积 / 表面积**和是否闭合（有破面标「未闭合」），数字按文件自身的坐标算
 - 依赖 dsh-better-sidebar ≥ 0.32.0：客户端半侧声明 `inject: ['betterSidebar']`。Cordis 0.32 起，不声明就去读服务会抛 `cannot get property … without inject`，而这个错误被 `apply` 里的 try/catch 吞掉了 —— 这正是旧版在 DSH 更新后整个预览器静默失效的原因。没有构建步骤，`lib/client.js` 就是产物
 

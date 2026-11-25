@@ -205,9 +205,10 @@ const VIEW_SCRIPT = `
     key2IsUp: Math.abs(afterKey2.pitch - 1.5607) < 0.02,
     axisLabels: axisBefore ? axisBefore.labels : null,
     axisTopLabels: axisTop ? axisTop.labels : null,
-    // 俯视时 Y 是朝向镜头的轴，屏幕上的长度应当缩成 0（画成圆环）
-    axisTopYFlat: !!axisTop && Math.hypot(axisTop.lines[1].dx, axisTop.lines[1].dy) < 1,
+    // 俯视时模型 +Z 正对镜头，屏幕上缩成一个圆环；X 向右、Y 向上（CAD 习惯）
+    axisTopZFlat: !!axisTop && Math.hypot(axisTop.lines[2].dx, axisTop.lines[2].dy) < 1,
     axisTopXRight: !!axisTop && axisTop.lines[0].dx > 10,
+    axisTopYUp: !!axisTop && axisTop.lines[1].dy < -10 && Math.abs(axisTop.lines[1].dx) < 1,
     axisOff: axisOff,
     axisBackOn: axisBackOn,
     tumbleStartY: startDir[1],

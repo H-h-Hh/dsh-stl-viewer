@@ -609,6 +609,29 @@ function serveBinary(buf) {
       dot(back.dir, flat.dir) > 0.999,
       dot(back.dir, flat.dir).toFixed(6)
     )
+
+    // 三脚标的轴必须和模型自己的轴一致：Z 向上的模型，+Z 在屏幕上要朝上
+    const { MODEL_AXES, finalizeMesh } = mod.__internals
+    // 一个立在 +Z 上的三角形：(0,0,0) (10,0,0) (0,0,10)
+    const tri = new Float32Array([0, 0, 0, 10, 0, 0, 0, 0, 10])
+    const mesh = finalizeMesh(tri, 1)
+    const upVertex = [mesh.positions[6], mesh.positions[7], mesh.positions[8]]
+    check(
+      'a model standing on +Z has that vertex above the origin after normalising',
+      upVertex[1] > 0.5 && near(upVertex[2], 0, 1e-6),
+      JSON.stringify(upVertex.map((n) => +n.toFixed(3)))
+    )
+    check(
+      'the triad draws the model axes with Z up',
+      JSON.stringify(MODEL_AXES) === JSON.stringify([[1, 0, 0], [0, 0, -1], [0, 1, 0]]),
+      JSON.stringify(MODEL_AXES)
+    )
+    // 每条渲染轴与模型轴一一对应：model Z 的上方向就是 render +Y
+    check(
+      'the triad axes are render vectors, not model vectors',
+      MODEL_AXES[2][1] === 1 && MODEL_AXES[1][2] === -1,
+      JSON.stringify(MODEL_AXES)
+    )
   }
 
   console.log(
