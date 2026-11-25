@@ -209,30 +209,39 @@ test('the second request for the same bytes is served from cache', async () => {
 })
 
 test('the mesh is written to the disk cache', async () => {
+  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+  const key = createHash('sha1').update(bytes).digest('hex')
+
   const { ctx, routes } = fakeContext()
   apply(ctx)
-  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
-  const response = fakeResponse()
-  await routes.get('/dsh-stl-viewer/convert').handler(fakeRequest('POST', bytes, 'cube.step'), response)
-  assert.equal(response.captured.status, 200)
 
   const health = fakeResponse()
   await routes.get('/dsh-stl-viewer/step').handler(fakeRequest('GET'), health)
   const info = JSON.parse(String(health.captured.body))
   assert.ok(info.cacheDir, 'health names the cache directory')
 
-  // 转换是异步落盘的，给它一点时间；文件应当以 DSHM 头开头。
-  let names = []
-  for (let attempt = 0; attempt < 40 && !names.length; attempt++) {
-    try {
-      names = readdirSync(info.cacheDir).filter((name) => name.endsWith('.dsm'))
-    } catch (error) {
-      // 目录还没建出来
-    }
-    if (!names.length) await new Promise((done) => setTimeout(done, 25))
+  // 真实用户的缓存目录里可能已经有别的零件，只认这份字节的 sha1
+  const file = join(info.cacheDir, key + '.dsm')
+  try {
+    unlinkSync(file)
+  } catch (error) {
+    // 本来就没有
   }
-  assert.ok(names.length > 0, 'at least one cache file in ' + info.cacheDir)
-  const first = readFileSync(join(info.cacheDir, names[0]))
+
+  const response = fakeResponse()
+  await routes.get('/dsh-stl-viewer/convert').handler(fakeRequest('POST', bytes, 'cube.step'), response)
+  assert.equal(response.captured.status, 200)
+
+  // 转换是异步落盘的，给它一点时间；文件应当以 DSHM 头开头。
+  let first = null
+  for (let attempt = 0; attempt < 80 && !first; attempt++) {
+    try {
+      first = readFileSync(file)
+    } catch (error) {
+      await new Promise((done) => setTimeout(done, 25))
+    }
+  }
+  assert.ok(first, 'cache file ' + file)
   assert.equal(first.toString('latin1', 0, 4), 'DSHM')
   assert.equal(first.length, response.captured.body.length)
 })

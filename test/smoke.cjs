@@ -144,6 +144,11 @@ const mod = entry.factory((spec) => {
 })
 check("exports name 'dsh-stl-viewer'", mod && mod.name === 'dsh-stl-viewer', mod && mod.name)
 check('exports apply()', mod && typeof mod.apply === 'function')
+check(
+  "declares inject ['betterSidebar']",
+  Array.isArray(mod && mod.inject) && mod.inject.indexOf('betterSidebar') >= 0,
+  JSON.stringify(mod && mod.inject)
+)
 
 // ---------------------------------------------------------------- registration
 console.log('\n[2] betterSidebar registration')
@@ -532,6 +537,79 @@ function serveBinary(buf) {
     rejected = true
   }
   check('decodeMesh rejects a foreign buffer', rejected)
+
+  // ---------------------------------------------------------------- free tumble
+  console.log('\n[13] free rotation')
+  {
+    const { qAxisAngle, qMultiply, qRotate, camBasis } = mod.__internals
+    const len = (v) => Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    const near = (a, b, eps) => Math.abs(a - b) < (eps || 1e-9)
+
+    // 四元数本身：绕 Y 转 90° 把 +X 送到 −Z，长度不变
+    const qy = qAxisAngle([0, 1, 0], Math.PI / 2)
+    const turned = qRotate(qy, [1, 0, 0])
+    check(
+      'a quarter turn about Y takes +X to −Z',
+      near(turned[0], 0, 1e-9) && near(turned[2], -1, 1e-9),
+      JSON.stringify(turned.map((n) => +n.toFixed(6)))
+    )
+    check('rotation keeps the length', near(len(turned), 1, 1e-9), len(turned).toFixed(9))
+    const twice = qRotate(qMultiply(qy, qy), [1, 0, 0])
+    check('two quarter turns take +X to −X', near(twice[0], -1, 1e-9), JSON.stringify(twice.map((n) => +n.toFixed(6))))
+
+    // camBasis：没翻滚时就是老的正交基
+    const flat = camBasis({ yaw: 0, pitch: 0, q: [0, 0, 0, 1] })
+    check(
+      'front view looks down +Z with right = +X',
+      near(flat.dir[2], 1, 1e-9) && near(flat.right[0], 1, 1e-9) && near(flat.up[1], 1, 1e-9),
+      JSON.stringify({ dir: flat.dir, right: flat.right, up: flat.up })
+    )
+
+    // 一直往上拖（模拟 orbit 的累乘）：必须能翻到背面甚至半球以下
+    const cam = { yaw: 0, pitch: 0, q: [0, 0, 0, 1] }
+    let lowest = 1
+    let worstUp = 1
+    let ortho = 1
+    for (let i = 0; i < 400; i++) {
+      const basis = camBasis(cam)
+      const qx = qAxisAngle(basis.right, -6 * 0.008)
+      const qy = qAxisAngle(basis.up, 0)
+      cam.q = qMultiply(qy, qMultiply(qx, cam.q))
+      const b = camBasis(cam)
+      lowest = Math.min(lowest, b.dir[1])
+      ortho = Math.min(ortho, Math.abs(dot(b.right, b.up)))
+      worstUp = Math.min(worstUp, len(b.up))
+      if (!isFinite(b.dir[0] + b.dir[1] + b.dir[2])) {
+        worstUp = -1
+        break
+      }
+    }
+    check('dragging up can put the camera below the model', lowest < -0.5, lowest.toFixed(3))
+    check('the basis stays orthonormal while tumbling', ortho < 1e-9, ortho.toExponential(2))
+    check('the basis never degenerates or goes NaN', worstUp > 0.99, worstUp.toFixed(6))
+
+    // 正俯视（pitch = 90°）时基准朝向竖直，也必须给出可用的基
+    const straightDown = camBasis({ yaw: 0.3, pitch: Math.PI / 2, q: [0, 0, 0, 1] })
+    check(
+      'a camera straight overhead still has a basis',
+      near(len(straightDown.right), 1, 1e-6) && near(len(straightDown.up), 1, 1e-6),
+      JSON.stringify({ right: straightDown.right, up: straightDown.up })
+    )
+
+    // 同样的拖动再反向拖回来，应该回到起点附近
+    for (let i = 0; i < 400; i++) {
+      const basis = camBasis(cam)
+      const qx = qAxisAngle(basis.right, 6 * 0.008)
+      cam.q = qMultiply(qAxisAngle(basis.up, 0), qMultiply(qx, cam.q))
+    }
+    const back = camBasis(cam)
+    check(
+      'dragging back returns to the starting view',
+      dot(back.dir, flat.dir) > 0.999,
+      dot(back.dir, flat.dir).toFixed(6)
+    )
+  }
 
   console.log(
     '\nresult: ' +

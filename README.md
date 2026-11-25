@@ -8,7 +8,8 @@ formats are tessellated by OpenCascade on the host, in a worker, and come back a
 triangles the rest of the plugin already knows how to draw, measure and weigh.
 
 ```
-left-drag     orbit around the model
+left-drag     orbit around the model — freely: the camera tumbles 360° in any direction,
+              straight over the north pole and on under the model, with no gimbal stop
 wheel         zoom
 right-drag    pan (Shift + left-drag does the same; two-finger scroll zooms)
 double-click  reset the view (the 复位视角 button and the R / 0 keys do too)
@@ -107,6 +108,11 @@ Measuring, volume and the view menu work because what arrives is ordinary triang
   instead of showing them lying on their back
 - **Frame-fit camera** — the orbit distance is derived from the bounding sphere and the
   FOV, so a 0.6 mm thick stencil and a 300 mm part both fill the panel on open
+- **360° free tumbling** — a drag accumulates a quaternion on top of the base orientation, so
+  the camera rolls over the poles and straight under the model instead of stopping at ±83°.
+  No gimbal wall, no flip at the zenith, no camera roll creeping in: the basis is rebuilt from
+  the quaternion every frame and stays orthonormal, and the XYZ triad keeps agreeing with what
+  is on screen
 - **Measure the way a CAD tool does** — the pointer snaps to a **vertex**, an **edge** or a
   whole **face**, like [Bambu Studio's measure tool](https://wiki.bambulab.com/en/software/bambu-studio/measure):
   corners within 12 px win over edges within 8 px, which win over the face underneath, and
@@ -153,8 +159,11 @@ Measuring, volume and the view menu work because what arrives is ordinary triang
 ## Requirements
 
 - DeepSeek Harness `>= 0.2.0`
-- [dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) `>= 0.30.0` — it owns
-  the file tree, the tabs and the `betterSidebar` service this plugin registers into
+- [dsh-better-sidebar](https://github.com/H-h-Hh/dsh-better-sidebar) `>= 0.32.0` — it owns
+  the file tree, the tabs and the `betterSidebar` service this plugin registers into. The
+  client half declares `inject: ['betterSidebar']`; from Cordis 0.32 on, reading a service
+  without declaring it throws, and an `apply` that swallows that error registers nothing at
+  all — which is exactly how an older build of this plugin went silent after a DSH update
 - A browser with WebGL 1 (everything current; the software rasteriser is enough)
 - For STEP / IGES / BREP nothing else is needed: the host half pulls in
   [`occt-import-js`](https://www.npmjs.com/package/occt-import-js), OpenCascade compiled to
@@ -345,7 +354,10 @@ corner panel: `直径 Ø 20.0 mm` and `半径 R 10.0 mm`.
 asserts the camera really is looking down (pitch 1.5607) with the zoom untouched, turns
 wireframe on, starts and stops the turntable (checking the yaw moved while it ran), grabs a
 snapshot and asserts the result is a PNG data URL, opens the shortcut card and closes it
-again, and finally presses `2` on the focused canvas and expects the same top view.
+again, presses `2` on the focused canvas and expects the same top view, and finally drags the
+canvas 400 px upwards with synthetic pointer events: the camera must end up **under** the model
+(`dir[1] < -0.3`), the triad must still read X / Y / Z, and dragging back must return to the
+starting direction — the free-tumble regression.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/measure.cjs \
@@ -387,7 +399,7 @@ harness serves that directory) and pass it as a relative path.
 plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 ```
 
-- 左键旋转 / 滚轮缩放 / 右键平移 / 双击复位（`R`、`0` 也复位）
+- 左键旋转，**可 360° 自由翻滚**：一路拖过天顶翻到模型背面乃至底下，没有 ±83° 的极点死角、过顶也不会突然翻转 / 滚轮缩放 / 右键平移 / 双击复位（`R`、`0` 也复位）
 - 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面 / 圆**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离、圆心距等，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
@@ -396,7 +408,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关
 - 左下角除三角面数与尺寸外，还给**体积 / 表面积**和是否闭合（有破面标「未闭合」），数字按文件自身的坐标算
-- 依赖 dsh-better-sidebar ≥ 0.30.0；没有构建步骤，`lib/client.js` 就是产物
+- 依赖 dsh-better-sidebar ≥ 0.32.0：客户端半侧声明 `inject: ['betterSidebar']`。Cordis 0.32 起，不声明就去读服务会抛 `cannot get property … without inject`，而这个错误被 `apply` 里的 try/catch 吞掉了 —— 这正是旧版在 DSH 更新后整个预览器静默失效的原因。没有构建步骤，`lib/client.js` 就是产物
 
 尺寸没有单位（STL 不存单位；STEP 自带单位，转换时按毫米要），大文件整体解析（几十万面约 1–2 秒），`.obj/.glb/.3mf` 不在范围内。
 

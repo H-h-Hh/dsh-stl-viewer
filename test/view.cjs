@@ -143,6 +143,48 @@ const VIEW_SCRIPT = `
   await sleep(600)
   const afterKey2 = test.camera()
 
+  // 8) 360° 自由旋转：往上一直拖，镜头要能翻到模型底下，再拖回来回到原位
+  viewer.setView('iso')
+  await sleep(450)
+  const box = canvas.getBoundingClientRect()
+  const midX = box.left + box.width / 2
+  const midY = box.top + box.height / 2
+  const fire = (type, x, y) =>
+    canvas.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+        button: 0,
+        buttons: type === 'pointerup' ? 0 : 1,
+        clientX: x,
+        clientY: y
+      })
+    )
+  const dragBy = async (step, times) => {
+    let y = midY
+    fire('pointerdown', midX, midY)
+    for (let i = 0; i < times; i++) {
+      y += step
+      fire('pointermove', midX, y)
+      await sleep(6)
+    }
+    fire('pointerup', midX, y)
+    await sleep(240)
+  }
+  const startDir = test.camera().dir
+  await dragBy(-20, 20) // 往上拖 400 px ≈ 183°
+  const afterTumble = test.camera()
+  const axisTumble = axisState()
+  await dragBy(20, 20) // 原路拖回
+  const backHome = test.camera()
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+  // 再翻到下面停住，让截图拍到的是"从底下看"的样子
+  await dragBy(-20, 20)
+  const leftBelow = test.camera().dir[1] < -0.3
+
   return {
     menuOpenOnClick: true,
     menuClosedAfterPick: menuClosedAfterPick,
@@ -168,6 +210,13 @@ const VIEW_SCRIPT = `
     axisTopXRight: !!axisTop && axisTop.lines[0].dx > 10,
     axisOff: axisOff,
     axisBackOn: axisBackOn,
+    tumbleStartY: startDir[1],
+    tumbleY: afterTumble.dir[1],
+    tumbleBelow: afterTumble.dir[1] < -0.3,
+    tumbleTurned: Math.abs(afterTumble.dir[1] - startDir[1]) > 0.5,
+    tumbleAxisLabels: axisTumble ? axisTumble.labels : null,
+    tumbleHome: dot3(backHome.dir, startDir) > 0.99,
+    tumbleLeftBelow: leftBelow,
     stats: stats
   }
 })()
