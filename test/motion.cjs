@@ -225,6 +225,44 @@ app.whenReady().then(async () => {
     }
     const axisAfter = selected >= 0 ? viewer._test.parts()[selected].axis : null
 
+    // 4.5) 折叠：面板收起来只剩标题，不再挡住模型；再点一下展开
+    const foldButton = () => panel() && panel().querySelector('.dsh-stl-fold')
+    const bodyShown = () => !!(panel() && panel().querySelector('.dsh-stl-explode'))
+    const heightOf = (el) => (el ? el.getBoundingClientRect().height : 0)
+    const heightOpen = heightOf(panel())
+    if (foldButton()) foldButton().click()
+    await sleep(140)
+    const foldedBodyHidden = !bodyShown()
+    const heightFolded = heightOf(panel())
+    const foldedShrunk = heightFolded > 0 && heightFolded < heightOpen * 0.6
+    const foldPressed = foldButton() ? foldButton().getAttribute('aria-expanded') : null
+    if (foldButton()) foldButton().click()
+    await sleep(140)
+    const unfoldedAgain = bodyShown()
+
+    // 4.6) 下拉框的对比度：深底浅字，不能被系统的浅色控件吃掉
+    // 不用正则里的反斜杠：这段代码在模板字符串里，\d 会被吃掉
+    const luminance = (rgb) => {
+      const m = String(rgb || '').split(/[^0-9.]+/).filter((part) => part.length > 0)
+      if (m.length < 3) return null
+      const r = Number(m[0]), g = Number(m[1]), b = Number(m[2])
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    }
+    // 折叠展开会重新渲染，所以要重新取一次节点
+    const axisSelectLive = panel() && panel().querySelector('.dsh-stl-axis-pick')
+    const selectAttached = !!(axisSelectLive && axisSelectLive.isConnected)
+    const selectStyle = axisSelectLive ? getComputedStyle(axisSelectLive) : null
+    const selectColour = selectStyle ? String(selectStyle.color) : ''
+    const selectBackground = selectStyle ? String(selectStyle.backgroundColor) : ''
+    const selectTextLum = luminance(selectColour)
+    const selectBackLum = luminance(selectBackground)
+    const axisSelectReadable = selectTextLum !== null && selectBackLum !== null &&
+      selectTextLum > 0.6 && selectBackLum < 0.4
+    // 面板自己也是固定深色面，字色不能随主题变成深色
+    const panelColour = panel() ? String(getComputedStyle(panel()).color) : ''
+    const panelTextLum = luminance(panelColour)
+    const panelTextReadable = panelTextLum !== null && panelTextLum > 0.6
+
     // 5) 全部复位
     press(/^(全部复位|Reset all)$/)
     await sleep(150)
@@ -272,6 +310,20 @@ app.whenReady().then(async () => {
       spinning,
       axisAfter,
       autoAxes,
+      foldedBodyHidden,
+      heightOpen: Math.round(heightOpen),
+      heightFolded: Math.round(heightFolded),
+      foldedShrunk,
+      foldPressed,
+      unfoldedAgain,
+      selectAttached,
+      selectColour,
+      selectBackground,
+      selectTextLum: selectTextLum === null ? null : Math.round(selectTextLum * 1000) / 1000,
+      selectBackLum: selectBackLum === null ? null : Math.round(selectBackLum * 1000) / 1000,
+      axisSelectReadable,
+      panelTextReadable,
+      panelColour,
       dragOn,
       dragOff,
       turnedIndex: turning,

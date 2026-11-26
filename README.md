@@ -31,7 +31,8 @@ motion        click 运动, then drag the 分解 slider to pull the parts apart 
               give it a spin rate and an axis. Meshing gears are found for you and the 联动
               row passes the turn along; type the 齿数 of each gear to make the ratio exact.
               Turn on 拖动转动 to grab a part and turn it with the mouse instead — dragging
-              empty space still orbits. Esc or 运动 again leaves the mode
+              empty space still orbits. The ▾ at the corner of the panel folds it down to its
+              title so it stops covering the model. Esc or 运动 again leaves the mode
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
@@ -183,6 +184,11 @@ estimate into the drawing's own numbers.</sub></p>
   positional and normal buffers and only the changed part is re-uploaded with `bufferSubData`, so
   hit-testing, measuring, wireframe and the volume readout all see the geometry where it
   currently is
+- **A panel that folds away** — the motion panel is the one overlay that wants to stay open while
+  you look at the model, so it folds: the ▾ next to the title drops everything but the title row,
+  which is 30 px tall instead of 270. The fold survives while you stay in 运动 and opens again
+  when you come back, and every control in it is drawn on a fixed dark surface with its own text
+  colour, so a light app theme cannot turn the labels into dark-on-dark
 - **A gear train that turns itself** — two parts count as meshed when their axes are parallel,
   they overlap along that axis by a real fraction of their thickness, and the distance between
   the axes is the sum of the radii measured where they overlap. That is enough to find the pair
@@ -482,7 +488,10 @@ converter, opens 运动, checks that a click on the model selects the part under
 switches 拖动转动 on, drags 80 px across a part and asserts the part's angle changed while the
 camera did not, switches it off and asserts the same drag now orbits. It then drags the explode
 slider and asserts the vertex buffer actually moved, gives a part 60 rpm, waits and reads the
-angle back, switches the axis to Z, resets everything, and closes the panel with Esc.
+angle back, switches the axis to Z, folds the panel down to its title and asserts the body is
+gone and the panel shrank from 268 px to 30 px, unfolds it, reads back the computed colours of
+the axis dropdown (cream on near-black, so it is legible whatever the OS draws native controls
+with), resets everything, and closes the panel with Esc.
 Typical output on the three-part gear fixture: `parts: 3`, `autoAxes: [1,1,1]` (all three wheels
 turn about model Y), `clickSelects: true`, `turned: true`, `cameraStayed: true`, `orbitWhenOff:
 true`, `moved: 0.71`, `spun: 4.40` radians. It needs Electron, so it stays out of CI.
@@ -519,7 +528,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致
-- **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**。「自动」取的是**模型自己坐标系里**最薄的一个方向（CAD 里 Z 向上，渲染时几何被转成 Y-up，两套坐标混用就会让「自动」指到侧面去）：轮子绕轮轴转、板子绕法线转，面板上会写成 `自动 (Y)` 这样。「拖动转动」开着时，在零件上拖就是手动转它（空白处拖仍是转视角），抓住点跟着表面走，手指不会从零件上滑开；联动开着时齿链上的邻居按传动比跟着转。变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动。进测量模式会先冻结所有转动并重建拓扑
+- **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**。「自动」取的是**模型自己坐标系里**最薄的一个方向（CAD 里 Z 向上，渲染时几何被转成 Y-up，两套坐标混用就会让「自动」指到侧面去）：轮子绕轮轴转、板子绕法线转，面板上会写成 `自动 (Y)` 这样。「拖动转动」开着时，在零件上拖就是手动转它（空白处拖仍是转视角），抓住点跟着表面走，手指不会从零件上滑开；联动开着时齿链上的邻居按传动比跟着转。面板右上角的 ▾ 可把它折叠成一行（约 30 px），不再挡住模型；面板是固定深色面，字色自带，浅色主题下也不会变成深色字变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动。进测量模式会先冻结所有转动并重建拓扑
 - **齿轮联动**：只要两根轴平行、轴向真有重叠、轴距约等于两处半径之和，就认作一对齿合（STEP 里没有“齿轮”这种东西，全靠几何推），转速按半径反比传递、外齿合反向，「联动」一行显示 `1 : 5.25` 这样的传动比，一个转速就能带动整列车。半径是从三角面量出来的，遇到一个零件带多层齿圈会差几个百分点；面板里的「齿数」填上（这里是 168 / 168 / 32）就按同模数的齿数反比算，精确到 `1 : 5.25`
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
