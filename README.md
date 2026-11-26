@@ -30,6 +30,10 @@ motion        click 运动, then drag the 分解 slider to pull the parts apart 
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
+
+language      the last row of the 视图 menu switches 中文 / English and remembers the
+              choice. Until you pick one the panel follows the app language, and a
+              Chinese system wins over an English app so the readouts stay readable
 ```
 
 <p align="center">
@@ -172,6 +176,13 @@ into the vertex buffers, so picking, measuring and the readouts keep working on 
   pointing at you as a ring. The letters follow the *model's* axes, so for a Z-up CAD part
   blue Z points up on screen — the viewer rotates the geometry Z-up → Y-up internally, and
   the triad undoes that rotation before drawing. `G` or the view menu hides it
+- **Chinese or English, and the Chinese one uses a Chinese face** — every label goes through
+  one dictionary, and the last row of the 视图 menu flips it and stores the choice in
+  `localStorage`. With no stored choice the panel follows the app: a `zh-CN` page means
+  Chinese, and an English page on a Chinese system still means Chinese, because reading an
+  English UI does not mean wanting English readouts. The chrome also carries an explicit
+  Chinese-first `font-family`, so the panel keeps its glyphs even when the container it is
+  dropped into uses a mono or Latin-only stack
 - **Menus, not a button wall** — three buttons stay on the model, the 视图 menu holds the
   rest, and `?` opens a card listing every gesture and key
 - **Themed** — transparent clear colour and `currentColor` chrome, so the panel follows
@@ -454,6 +465,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关。字母标的是**模型自己的轴**——零件在 CAD 里 Z 向上，屏幕上就是蓝 Z 朝上（渲染时几何被转成 Y-up，三脚标画之前会把这步转回去）
+- 界面中英双语：`视图` 菜单最后一行切 `语言`，选择记在 `localStorage` 里；没选过就跟随应用语言——应用是英文但系统是中文时也用中文。面板本身带一条中文优先的字体栈，放进纯拉丁或等宽字体的容器里也不会掉成宋体
 - 左下角除三角面数与尺寸外，还给**体积 / 表面积**和是否闭合（有破面标「未闭合」），数字按文件自身的坐标算
 - 依赖 dsh-better-sidebar ≥ 0.32.0：客户端半侧声明 `inject: ['betterSidebar']`。Cordis 0.32 起，不声明就去读服务会抛 `cannot get property … without inject`，而这个错误被 `apply` 里的 try/catch 吞掉了 —— 这正是旧版在 DSH 更新后整个预览器静默失效的原因。没有构建步骤，`lib/client.js` 就是产物
 

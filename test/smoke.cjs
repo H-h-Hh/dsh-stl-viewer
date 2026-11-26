@@ -110,15 +110,26 @@ sandbox.window = {
   matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
   getComputedStyle: () => ({ getPropertyValue: () => '' })
 }
-// Pin the UI language: the assertions below read the English strings.
+// Pin the UI language: the assertions below read the English strings. The [14]
+// group flips `appLangTag` and the navigator languages to check the detection rules.
+let appLangTag = 'en-US'
 sandbox.document = {
-  documentElement: { getAttribute: (name) => (name === 'lang' ? 'en-US' : null) },
+  documentElement: { getAttribute: (name) => (name === 'lang' ? appLangTag : null) },
   body: { classList: { contains: () => false } },
   createElement: () => ({ style: {}, setAttribute: noop }),
   addEventListener: noop,
   removeEventListener: noop
 }
 sandbox.navigator = { language: 'en-US', languages: ['en-US'] }
+// 语言选择会写进 localStorage；沙箱里给一个最小的实现，[14] 组用它验证"记住选择"
+const langStore = {}
+sandbox.localStorage = {
+  getItem: (key) => (key in langStore ? langStore[key] : null),
+  setItem: (key, value) => {
+    langStore[key] = String(value)
+  }
+}
+sandbox.window.localStorage = sandbox.localStorage
 sandbox.globalThis = sandbox
 
 const context = vm.createContext(sandbox)
@@ -671,6 +682,45 @@ function serveBinary(buf) {
       MODEL_AXES[2][1] === 1 && MODEL_AXES[1][2] === -1,
       JSON.stringify(MODEL_AXES)
     )
+  }
+
+  // ---------------------------------------------------------------- language
+  console.log('\n[14] language')
+  {
+    const { detectLang, setLang, getLang, LANG_KEY, FONT_UI } = mod.__internals
+    const nav = sandbox.navigator
+    const reset = () => {
+      delete langStore[LANG_KEY]
+      appLangTag = 'en-US'
+      nav.language = 'en-US'
+      nav.languages = ['en-US']
+      setLang('en')
+      delete langStore[LANG_KEY]
+    }
+
+    reset()
+    check('an English app on an English system stays English', detectLang() === 'en', detectLang())
+
+    appLangTag = 'zh-CN'
+    check('a Chinese app language wins', detectLang() === 'zh', detectLang())
+
+    // 英文界面 + 中文系统：面板跟系统走，中文用户不必读英文读数
+    appLangTag = 'en-US'
+    nav.languages = ['zh-CN', 'zh']
+    check('a Chinese system wins over an English app', detectLang() === 'zh', detectLang())
+
+    // 手动切过的选择最强，并且记在 localStorage 里
+    reset()
+    setLang('zh')
+    check('setLang switches and reports back', getLang() === 'zh', getLang())
+    check('setLang remembers the choice', langStore[LANG_KEY] === 'zh', langStore[LANG_KEY])
+    check('a stored choice beats the app language', detectLang() === 'zh', detectLang())
+    nav.languages = ['en-US']
+    check('a stored choice survives a language flip', detectLang() === 'zh', detectLang())
+
+    reset()
+    check('reset puts the detection back to English', detectLang() === 'en', detectLang())
+    check('the UI font stack carries a Chinese face', /Microsoft YaHei|PingFang SC/.test(FONT_UI || ''), FONT_UI)
   }
 
   console.log(

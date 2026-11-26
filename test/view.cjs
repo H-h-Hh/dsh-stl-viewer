@@ -185,6 +185,26 @@ const VIEW_SCRIPT = `
   await dragBy(-20, 20)
   const leftBelow = test.camera().dir[1] < -0.3
 
+  // 语言：harness 的 <html lang> 是 zh-CN，所以默认是中文；视图菜单最后一行切到英文再切回来
+  const rootFont = getComputedStyle(document.querySelector('.dsh-stl-viewer')).fontFamily
+  const labelOf = () => (viewsButton.textContent || '').trim()
+  const langRow = () => rowBy(/语言|Language/)
+  await openMenu()
+  const langInitial = labelOf()
+  const langRowInitial = langRow() ? langRow().textContent : null
+  if (langRow()) langRow().click()
+  await sleep(180)
+  await openMenu()
+  const langAfterZh = labelOf()
+  const langRowAfterZh = langRow() ? langRow().textContent : null
+  const statsAfterZh = statsText()
+  const storedAfterZh = (function () {
+    try { return window.localStorage.getItem('dsh-stl-viewer:lang') } catch (e) { return null }
+  })()
+  if (langRow()) langRow().click()
+  await sleep(180)
+  const langBack = labelOf()
+
   return {
     menuOpenOnClick: true,
     menuClosedAfterPick: menuClosedAfterPick,
@@ -218,6 +238,18 @@ const VIEW_SCRIPT = `
     tumbleAxisLabels: axisTumble ? axisTumble.labels : null,
     tumbleHome: dot3(backHome.dir, startDir) > 0.99,
     tumbleLeftBelow: leftBelow,
+    rootFont: rootFont,
+    fontIsChinese: /Microsoft YaHei|PingFang SC|Noto Sans CJK|Source Han Sans/.test(rootFont || ''),
+    langInitial: langInitial,
+    langRowInitial: langRowInitial,
+    langIsChinese: /视图/.test(langInitial || ''),
+    langRowIsChinese: /语言/.test(langRowInitial || ''),
+    langAfterZh: langAfterZh,
+    langRowAfterZh: langRowAfterZh,
+    langSwitchedToEnglish: /View/.test(langAfterZh || '') && /Language/.test(langRowAfterZh || ''),
+    langStatsEnglish: /triangles/.test(statsAfterZh || ''),
+    langStored: storedAfterZh,
+    langBackToChinese: /视图/.test(langBack || ''),
     stats: stats
   }
 })()
