@@ -7,7 +7,8 @@ place, with the controls of a normal 3D viewer. STL is parsed in the page; STEP 
 formats are tessellated by OpenCascade on the host, in a worker, and come back as the very same
 triangles the rest of the plugin already knows how to draw, measure and weigh. An assembly keeps
 its parts apart: explode it to see how it goes together, then spin any single part to watch
-it turn — and the gears find each other, so turning one turns the ones it meshes with.
+it turn, or grab it and drag it round by hand — and the gears find each other, so turning one
+turns the ones it meshes with.
 
 ```
 left-drag     orbit around the model — freely: the camera tumbles 360° in any direction,
@@ -29,7 +30,8 @@ motion        click 运动, then drag the 分解 slider to pull the parts apart 
               play and let it animate). Click a part in the list — or on the model — and
               give it a spin rate and an axis. Meshing gears are found for you and the 联动
               row passes the turn along; type the 齿数 of each gear to make the ratio exact.
-              Esc or 运动 again leaves the mode
+              Turn on 拖动转动 to grab a part and turn it with the mouse instead — dragging
+              empty space still orbits. Esc or 运动 again leaves the mode
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
@@ -95,12 +97,14 @@ the result, all 17,136 of them, which is exactly the count the STL export of the
 Measuring, volume and the view menu work because what arrives is ordinary triangles.</sub></p>
 
 <p align="center">
-  <img src="docs/preview/preview_motion.jpg" width="100%" alt="A three-part gear assembly exploded, with two parts spinning">
+  <img src="docs/preview/preview_motion.jpg" width="100%" alt="A three-part gear assembly exploded, its wheels turning about the model's own Y axis, with drag-to-turn switched on">
 </p>
 
-<p align="center"><sub>运动: the same 55,130-triangle assembly, 3 parts, pulled apart 70 % — the two gears
-are turning at 24 rpm about Z while the panel lists them. Explode and per-part rotation are baked
-into the vertex buffers, so picking, measuring and the readouts keep working on the moved geometry.</sub></p>
+<p align="center"><sub>运动: the same assembly (53,596 triangles), 3 parts, pulled apart 70 % — the
+wheels turn about the model's own Y axis, which is why the 回转轴 row reads <code>自动 (Y)</code>
+and the blue Z of the triad points straight up. <code>拖动转动</code> is on, so a drag on a
+part turns that part rather than the camera. Explode and rotation are baked into the vertex
+buffers, so picking, measuring and the readouts keep working on the moved geometry.</sub></p>
 
 <p align="center">
   <img src="docs/preview/preview_couple.jpg" width="100%" alt="Two wheel gears and a pinion coupled as a gear train, with the ratio readout in the motion panel">
@@ -172,11 +176,13 @@ estimate into the drawing's own numbers.</sub></p>
   assumption). "Not closed" means some edge belongs to a single facet — a hole in the shell
 - **Explode an assembly, spin one part** — a STEP file that holds several solids becomes several
   parts. Explode slides them apart along the direction from the origin to each part's centre, and
-  any part can be given a rotation rate and an axis (Auto picks the part's flattest axis, which is
-  the natural axis for a plate or a wheel). The transform is baked into the positional and normal
-  buffers and only the changed part is re-uploaded with `bufferSubData`, so hit-testing, measuring,
-  wireframe and the volume readout all see the geometry where it currently is. Masks, summary
-  panels and the readout stay in the same place as before
+  any part can be given a rotation rate and an axis. Auto picks the part's thinnest side, measured
+  in the model's own frame rather than the renderer's: CAD puts Z up, the viewer rotates the
+  geometry to Y-up, and mixing the two is how an “auto” axis ends up pointing sideways. A wheel
+  therefore turns about its shaft, and a plate about its normal. The transform is baked into the
+  positional and normal buffers and only the changed part is re-uploaded with `bufferSubData`, so
+  hit-testing, measuring, wireframe and the volume readout all see the geometry where it
+  currently is
 - **A gear train that turns itself** — two parts count as meshed when their axes are parallel,
   they overlap along that axis by a real fraction of their thickness, and the distance between
   the axes is the sum of the radii measured where they overlap. That is enough to find the pair
@@ -186,6 +192,12 @@ estimate into the drawing's own numbers.</sub></p>
   a part carries more than one rim — type the tooth counts (168 / 168 / 32 here) and the ratio
   becomes exact, `1 : 5.25`. The 联动 row switches the whole thing off when you want to turn a
   single part on its own
+- **Turn a part by hand** — with 拖动转动 switched on, dragging across a part rotates it about its
+  axis instead of orbiting the camera; the grab point follows the surface, so the part does not
+  slide out from under the cursor. The angle is whatever the drag is worth where your finger is:
+  the tangential direction of the turn is projected into the screen and the drag is fitted to it,
+  which also makes dragging backwards turn it back. With 联动 on, the parts it meshes with follow
+  at the train's ratio, so hand-cranking one gear cranks the whole train
 - **Standard views, animated** — front / top / right / iso on keys `1`–`4`, with a 260 ms
   eased transition that moves the orbit angles only, so your zoom and focus point survive
 - **Wireframe and turntable** — `W` and `A`, or the same rows in the view menu. Wireframe
@@ -355,6 +367,10 @@ showing a generic blob.
 - **Motion is frozen while measuring.** Measuring builds edge, corner and circle topology from the
   vertex positions; a spinning part would invalidate it every frame, so entering measure mode stops
   every spin and collapses nothing else, and the topology is rebuilt on the next hover.
+- **The auto axis is a measurement, not a label.** It is the part's thinnest bounding-box side in
+  model space, which is right for wheels, plates and turned parts but meaningless for a shaft
+  lying diagonally; the axis box next to it overrides the guess with X / Y / Z. Hand-turning sets
+  that part's rate to zero, so what you put where you left it stays there.
 - **A meshed pair is recognised, not declared.** Offsets, backlash and a profile-shifted gear all
   blur the radii, so the ratio found from geometry is an estimate — it reads `1 : 5.45` on a
   168-tooth wheel that a Ø172 walking rim makes look 86 mm in radius, where the drawing says
@@ -462,11 +478,14 @@ The second form is how the STEP screenshot above was made: copy a model into `te
 harness serves that directory) and pass it as a relative path.
 
 `test/motion.cjs` is the assembly end-to-end. It runs the real harness against the real host
-converter, opens 运动, checks that a click on the model selects the part under the cursor, drags
-the explode slider and asserts the vertex buffer actually moved, gives a part 60 rpm, waits and
-reads the angle back, switches the axis to Z, resets everything, and closes the panel with Esc.
-Typical output on the three-part gear fixture: `parts: 3`, `clickSelects: true`, `moved: 0.698`,
-`spun: 4.40` radians. It needs Electron, so it stays out of CI.
+converter, opens 运动, checks that a click on the model selects the part under the cursor, then
+switches 拖动转动 on, drags 80 px across a part and asserts the part's angle changed while the
+camera did not, switches it off and asserts the same drag now orbits. It then drags the explode
+slider and asserts the vertex buffer actually moved, gives a part 60 rpm, waits and reads the
+angle back, switches the axis to Z, resets everything, and closes the panel with Esc.
+Typical output on the three-part gear fixture: `parts: 3`, `autoAxes: [1,1,1]` (all three wheels
+turn about model Y), `clickSelects: true`, `turned: true`, `cameraStayed: true`, `orbitWhenOff:
+true`, `moved: 0.71`, `spun: 4.40` radians. It needs Electron, so it stays out of CI.
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/motion.cjs \
@@ -500,7 +519,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致
-- **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**（自动 / X / Y / Z）。变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动，不是另一个"摆设用的视图"。进测量模式会先冻结所有转动并重建拓扑
+- **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**。「自动」取的是**模型自己坐标系里**最薄的一个方向（CAD 里 Z 向上，渲染时几何被转成 Y-up，两套坐标混用就会让「自动」指到侧面去）：轮子绕轮轴转、板子绕法线转，面板上会写成 `自动 (Y)` 这样。「拖动转动」开着时，在零件上拖就是手动转它（空白处拖仍是转视角），抓住点跟着表面走，手指不会从零件上滑开；联动开着时齿链上的邻居按传动比跟着转。变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动。进测量模式会先冻结所有转动并重建拓扑
 - **齿轮联动**：只要两根轴平行、轴向真有重叠、轴距约等于两处半径之和，就认作一对齿合（STEP 里没有“齿轮”这种东西，全靠几何推），转速按半径反比传递、外齿合反向，「联动」一行显示 `1 : 5.25` 这样的传动比，一个转速就能带动整列车。半径是从三角面量出来的，遇到一个零件带多层齿圈会差几个百分点；面板里的「齿数」填上（这里是 168 / 168 / 32）就按同模数的齿数反比算，精确到 `1 : 5.25`
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片

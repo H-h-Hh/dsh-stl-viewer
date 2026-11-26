@@ -787,6 +787,65 @@ function serveBinary(buf) {
     )
   }
 
+  // ---------------------------------------------------------------- turning parts
+  console.log('\n[16] turning parts')
+  {
+    const { describeParts, rotateAroundAxis } = mod.__internals
+
+    // 8 个角点再补一个重复点，长度凑成 3 个三角面；describeParts 只看顶点，够用。
+    // 渲染空间是 Y-up，模型是 Z-up：渲染 Y 薄 = 模型 Z 薄，渲染 Z 薄 = 模型 Y 薄。
+    const boxOf = (sx, sy, sz) => {
+      const corners = []
+      for (const s of [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]) {
+        corners.push((sx / 2) * s[0], (sy / 2) * s[1], (sz / 2) * s[2])
+      }
+      corners.push(corners[0], corners[1], corners[2])
+      return new Float32Array(corners)
+    }
+    const describe = (sx, sy, sz) =>
+      describeParts(boxOf(sx, sy, sz), [{ name: '', start: 0, count: 3 }])[0]
+
+    const lying = describe(40, 2, 40) // 平躺：渲染 Y 最薄
+    const standing = describe(40, 40, 2) // 立着：渲染 Z 最薄
+    const sideways = describe(2, 40, 40) // 渲染 X 最薄
+    check(
+      'a plate lying flat turns about the model Z axis',
+      lying.autoAxis === 2,
+      'autoAxis ' + lying.autoAxis + ' (flat ' + lying.flat + ')'
+    )
+    check(
+      'a plate standing on edge turns about the model Y axis',
+      standing.autoAxis === 1,
+      'autoAxis ' + standing.autoAxis + ' (flat ' + standing.flat + ')'
+    )
+    check(
+      'a plate thin along X turns about the model X axis',
+      sideways.autoAxis === 0,
+      'autoAxis ' + sideways.autoAxis + ' (flat ' + sideways.flat + ')'
+    )
+    check(
+      'the render-space flat axis is kept for the gear code',
+      lying.flat === 1 && standing.flat === 2 && sideways.flat === 0,
+      [lying.flat, standing.flat, sideways.flat].join(',')
+    )
+
+    const quarter = rotateAroundAxis([1, 0, 0], [0, 0, 0], [0, 1, 0], Math.PI / 2)
+    check(
+      'a quarter turn about +Y takes +X to -Z',
+      Math.abs(quarter[0]) < 1e-9 && Math.abs(quarter[1]) < 1e-9 && Math.abs(quarter[2] + 1) < 1e-9,
+      JSON.stringify(quarter)
+    )
+    const about = rotateAroundAxis([0, 1, 0], [0, 0, 0], [1, 0, 0], Math.PI / 2)
+    check(
+      'a quarter turn about +X takes +Y to +Z',
+      Math.abs(about[0]) < 1e-9 && Math.abs(about[1]) < 1e-9 && Math.abs(about[2] - 1) < 1e-9,
+      JSON.stringify(about)
+    )
+    const away = rotateAroundAxis([3, 1, 0], [1, 1, 0], [0, 0, 1], 1.1)
+    const radius = Math.hypot(away[0] - 1, away[1] - 1)
+    check('the turn keeps the distance to the axis', Math.abs(radius - 2) < 1e-9, radius)
+  }
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

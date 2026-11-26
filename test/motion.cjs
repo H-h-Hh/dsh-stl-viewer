@@ -146,6 +146,43 @@ app.whenReady().then(async () => {
     await sleep(80)
     const clickSelects = viewer._test.motion().selected >= 0
 
+    // 2.5) 拖动转动：在零件上按住拖 = 手动转它，相机不动
+    // 先把自转停掉，否则读到的角度变化是自转、不是拖动
+    viewer._test.parts().forEach((part, i) => viewer._test.setPartSpin(i, 0))
+    await sleep(80)
+    const dragButton = () => panel() && panel().querySelector('.dsh-stl-drag')
+    if (dragButton()) dragButton().click()
+    await sleep(80)
+    const dragOn = viewer._test.dragTurn()
+    // 用画布中心当抓点（前面已验证这里能命中零件），点下去随即读出选中了谁
+    const camBefore = viewer._test.camera()
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: cx, clientY: cy }))
+    const turning = viewer._test.motion().selected
+    const turnAngle0 = turning >= 0 ? viewer._test.partAngle(turning) : null
+    for (let step = 1; step <= 8; step++) {
+      canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, button: 0, clientX: cx + step * 10, clientY: cy }))
+    }
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: cx + 80, clientY: cy }))
+    await sleep(140)
+    const turnAngle1 = turning >= 0 ? viewer._test.partAngle(turning) : null
+    const camAfter = viewer._test.camera()
+    const cameraMoved = (a, b) =>
+      Math.abs(a.dir[0] - b.dir[0]) + Math.abs(a.dir[1] - b.dir[1]) + Math.abs(a.dir[2] - b.dir[2])
+    const turned = turnAngle0 !== null && turnAngle1 !== null && Math.abs(turnAngle1 - turnAngle0) > 0.05
+    const cameraStayed = cameraMoved(camBefore, camAfter) < 1e-6
+    const autoAxes = viewer._test.parts().map((part) => part.autoAxis)
+
+    // 关掉「拖动转动」，拖动应该回到转视角
+    if (dragButton()) dragButton().click()
+    await sleep(80)
+    const dragOff = !viewer._test.dragTurn()
+    const camBefore2 = viewer._test.camera()
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: cx, clientY: cy }))
+    canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, button: 0, clientX: cx + 70, clientY: cy + 10 }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: cx + 70, clientY: cy + 10 }))
+    await sleep(120)
+    const orbitWhenOff = cameraMoved(camBefore2, viewer._test.camera()) > 1e-4
+
     // 3) 分解：拖到 100%
     const slider = panel() && panel().querySelector('.dsh-stl-explode')
     const firstVertexBefore = viewer._test.vertices(0)
@@ -210,6 +247,10 @@ app.whenReady().then(async () => {
       shotSlider.value = '70'
       shotSlider.dispatchEvent(new Event('input', { bubbles: true }))
     }
+    viewer.setView('iso')
+    if (viewer._test.setPartAxis) viewer._test.setPartAxis(0, -1)
+    if (viewer._test.setDragTurn) viewer._test.setDragTurn(true)
+    await sleep(320)
     viewer._test.setPartSpin(0, 0.4)
     if (rows > 1) viewer._test.setPartSpin(1, -0.5)
     if (rows > 0) panel().querySelectorAll('.dsh-stl-part')[0].click()
@@ -230,6 +271,14 @@ app.whenReady().then(async () => {
       spun: angleBefore !== null && angleAfter !== null ? Math.abs(angleAfter - angleBefore) : null,
       spinning,
       axisAfter,
+      autoAxes,
+      dragOn,
+      dragOff,
+      turnedIndex: turning,
+      turned,
+      turnAngle: turnAngle0 !== null && turnAngle1 !== null ? Math.round((turnAngle1 - turnAngle0) * 1000) / 1000 : null,
+      cameraStayed,
+      orbitWhenOff,
       afterReset,
       singlePartExplodeStaysZero: before.parts < 2 ? exploded === 0 : null,
       closedByEsc,
