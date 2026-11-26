@@ -723,6 +723,70 @@ function serveBinary(buf) {
     check('the UI font stack carries a Chinese face', /Microsoft YaHei|PingFang SC/.test(FONT_UI || ''), FONT_UI)
   }
 
+  // ---------------------------------------------------------------- gear train
+  console.log('\n[15] gear train')
+  {
+    const { describeParts, describeGears } = mod.__internals
+
+    // 两圈顶点构成的圆柱面就够 describeGears 用了：它只看顶点落在什么半径、什么轴向高度
+    const ring = (cx, cz, radius, half, seg) => {
+      const out = []
+      for (let i = 0; i < seg; i++) {
+        const a0 = (i / seg) * Math.PI * 2
+        const a1 = ((i + 1) / seg) * Math.PI * 2
+        const x0 = cx + Math.cos(a0) * radius
+        const z0 = cz + Math.sin(a0) * radius
+        const x1 = cx + Math.cos(a1) * radius
+        const z1 = cz + Math.sin(a1) * radius
+        out.push(x0, half, z0, x1, half, z1, x0, -half, z0)
+        out.push(x1, half, z1, x1, -half, z1, x0, -half, z0)
+        out.push(x0, half, z0, x1, -half, z1, x1, half, z1)
+      }
+      return out
+    }
+
+    const big = ring(0, 0, 10, 1, 48)
+    const small = ring(11.8, 0, 2, 1, 24)
+    const far = ring(30, 0, 2, 1, 24)
+    const positions = new Float32Array([...big, ...small, ...far])
+    const ranges = [
+      { name: 'big', start: 0, count: big.length / 9 },
+      { name: 'small', start: big.length / 9, count: small.length / 9 },
+      { name: 'far', start: (big.length + small.length) / 9, count: far.length / 9 }
+    ]
+    const parts = describeParts(positions, ranges)
+    const gears = describeGears(positions, parts)
+
+    const pairs = gears.pairs.map((p) => [p.a, p.b])
+    check('one meshing pair is found', pairs.length === 1, JSON.stringify(pairs))
+    const pair = gears.pairs[0]
+    check('it is the big wheel and the small one', pair && pair.a === 0 && pair.b === 1, JSON.stringify(pairs))
+    check('the addendum is the tooth height', pair && Math.abs(pair.addendum - 0.1) < 0.02, pair && pair.addendum)
+    check(
+      'the ratio is the pitch radii inverted',
+      pair && Math.abs(pair.ratio - 9.9 / 1.9) < 0.02,
+      pair && pair.ratio
+    )
+    check(
+      'a distant part is not meshed',
+      !gears.pairs.some((p) => p.a === 2 || p.b === 2),
+      JSON.stringify(pairs)
+    )
+
+    const same = ring(0, 0, 8, 1, 40)
+    const sameB = ring(15.8, 0, 8, 1, 40)
+    const flat = new Float32Array([...same, ...sameB])
+    const gears2 = describeGears(flat, describeParts(flat, [
+      { name: 'a', start: 0, count: same.length / 9 },
+      { name: 'b', start: same.length / 9, count: sameB.length / 9 }
+    ]))
+    check(
+      'two equal wheels come out 1:1',
+      gears2.pairs.length === 1 && Math.abs(gears2.pairs[0].ratio - 1) < 0.02,
+      gears2.pairs.length ? String(gears2.pairs[0].ratio) : 'no pair'
+    )
+  }
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')

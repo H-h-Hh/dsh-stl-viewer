@@ -6,7 +6,8 @@ Click any `.stl`, `.step`, `.stp`, `.iges`, `.igs` or `.brep` in the
 place, with the controls of a normal 3D viewer. STL is parsed in the page; STEP and the other B-rep
 formats are tessellated by OpenCascade on the host, in a worker, and come back as the very same
 triangles the rest of the plugin already knows how to draw, measure and weigh. An assembly keeps
-its parts apart: explode it to see how it goes together, then spin any single part to watch it turn.
+its parts apart: explode it to see how it goes together, then spin any single part to watch
+it turn — and the gears find each other, so turning one turns the ones it meshes with.
 
 ```
 left-drag     orbit around the model — freely: the camera tumbles 360° in any direction,
@@ -26,7 +27,9 @@ view          the 视图 menu holds front / top / right / iso (keys 1 / 2 / 3 / 
 
 motion        click 运动, then drag the 分解 slider to pull the parts apart (or press
               play and let it animate). Click a part in the list — or on the model — and
-              give it a spin rate and an axis. Esc or 运动 again leaves the mode
+              give it a spin rate and an axis. Meshing gears are found for you and the 联动
+              row passes the turn along; type the 齿数 of each gear to make the ratio exact.
+              Esc or 运动 again leaves the mode
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
@@ -99,6 +102,16 @@ Measuring, volume and the view menu work because what arrives is ordinary triang
 are turning at 24 rpm about Z while the panel lists them. Explode and per-part rotation are baked
 into the vertex buffers, so picking, measuring and the readouts keep working on the moved geometry.</sub></p>
 
+<p align="center">
+  <img src="docs/preview/preview_couple.jpg" width="100%" alt="Two wheel gears and a pinion coupled as a gear train, with the ratio readout in the motion panel">
+</p>
+
+<p align="center"><sub>Gear train: the same assembly, exploded 70 %. The pinion drives both wheels, so the 联动
+row reads <code>1 : 5.25</code> and one spin rate turns all three at the ratio the teeth imply — the
+two wheels the same way, the pinion the other way round. Nothing in the file says “gear”; the
+plugin finds the pairs by parallel axes and centre distance, and the 齿数 boxes turn that
+estimate into the drawing's own numbers.</sub></p>
+
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
 > formats such as `.stl`, `.obj`, `.step` fall through to “this file type cannot be
@@ -164,6 +177,15 @@ into the vertex buffers, so picking, measuring and the readouts keep working on 
   buffers and only the changed part is re-uploaded with `bufferSubData`, so hit-testing, measuring,
   wireframe and the volume readout all see the geometry where it currently is. Masks, summary
   panels and the readout stay in the same place as before
+- **A gear train that turns itself** — two parts count as meshed when their axes are parallel,
+  they overlap along that axis by a real fraction of their thickness, and the distance between
+  the axes is the sum of the radii measured where they overlap. That is enough to find the pair
+  a CAD assembly never bothers to record: the ratio comes from the same radii, the direction
+  flips because an external mesh turns the other way, and one spin rate then propagates along
+  the whole train. Radii are read off a tessellation, so the estimate is a few percent off when
+  a part carries more than one rim — type the tooth counts (168 / 168 / 32 here) and the ratio
+  becomes exact, `1 : 5.25`. The 联动 row switches the whole thing off when you want to turn a
+  single part on its own
 - **Standard views, animated** — front / top / right / iso on keys `1`–`4`, with a 260 ms
   eased transition that moves the orbit angles only, so your zoom and focus point survive
 - **Wireframe and turntable** — `W` and `A`, or the same rows in the view menu. Wireframe
@@ -333,6 +355,11 @@ showing a generic blob.
 - **Motion is frozen while measuring.** Measuring builds edge, corner and circle topology from the
   vertex positions; a spinning part would invalidate it every frame, so entering measure mode stops
   every spin and collapses nothing else, and the topology is rebuilt on the next hover.
+- **A meshed pair is recognised, not declared.** Offsets, backlash and a profile-shifted gear all
+  blur the radii, so the ratio found from geometry is an estimate — it reads `1 : 5.45` on a
+  168-tooth wheel that a Ø172 walking rim makes look 86 mm in radius, where the drawing says
+  `1 : 5.25`. Tooth counts win when they are filled in: same module means the ratio is the
+  inverse ratio of the tooth counts, and the geometry is only the fallback
 - `.obj`, `.glb`, `.3mf` are out of scope.
 - **No WebGL → a message, not a white panel.**
 
@@ -448,6 +475,18 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/motion.cjs \
   "test/harness.html?file=./_your_assembly.step" out.png
 ```
 
+`test/couple.cjs` is the gear-train end-to-end. It tessellates a real assembly, reads the pairs the
+plugin found, turns the pinion at one revolution per second, waits and compares the angles of the
+three parts: the two wheels must turn together, the pinion the other way, and the ratio must match
+the geometry. Then it types the tooth counts and asserts the ratio becomes exactly 5.25, switches
+联动 off and checks the wheels stand still, switches it back on and checks they move again. Typical
+output on the three-part gear fixture: `ratioMeasured: 5.452`, `withTeeth.ratio: 5.25`,
+`uncoupled.wheelsStill: true`.
+
+```bash
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/couple.cjs out.png ./_your_assembly.step
+```
+
 ## 中文速览
 
 给 DSH 侧边栏加一个 **STL / STEP 三维预览**：文件树里点开 `.stl`、`.step`、`.stp`、`.iges`、`.igs`、`.brep`，右侧面板直接渲染，交互同常规 3D 看图。
@@ -462,6 +501,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致
 - **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**（自动 / X / Y / Z）。变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动，不是另一个"摆设用的视图"。进测量模式会先冻结所有转动并重建拓扑
+- **齿轮联动**：只要两根轴平行、轴向真有重叠、轴距约等于两处半径之和，就认作一对齿合（STEP 里没有“齿轮”这种东西，全靠几何推），转速按半径反比传递、外齿合反向，「联动」一行显示 `1 : 5.25` 这样的传动比，一个转速就能带动整列车。半径是从三角面量出来的，遇到一个零件带多层齿圈会差几个百分点；面板里的「齿数」填上（这里是 168 / 168 / 32）就按同模数的齿数反比算，精确到 `1 : 5.25`
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关。字母标的是**模型自己的轴**——零件在 CAD 里 Z 向上，屏幕上就是蓝 Z 朝上（渲染时几何被转成 Y-up，三脚标画之前会把这步转回去）
