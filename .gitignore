@@ -6,6 +6,7 @@ pnpm-lock.yaml
 # --- test output ---
 test/*.png
 *.log
+.tmp/
 
 # --- editor / OS ---
 .vscode/

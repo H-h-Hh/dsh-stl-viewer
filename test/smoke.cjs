@@ -86,6 +86,8 @@ const sandbox = {
   TextDecoder,
   setTimeout,
   clearTimeout,
+  setInterval,
+  clearInterval,
   fetch: (url, opts) => fetchImpl(url, opts),
   requestAnimationFrame: () => 0,
   cancelAnimationFrame: noop,
@@ -845,6 +847,36 @@ function serveBinary(buf) {
     const radius = Math.hypot(away[0] - 1, away[1] - 1)
     check('the turn keeps the distance to the axis', Math.abs(radius - 2) < 1e-9, radius)
   }
+
+  console.log('\n[17] a big assembly says how big and how slow')
+  const never = new Promise(() => {})
+  fetchImpl = (url) => {
+    if (String(url).indexOf('convert') >= 0) return never
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(16)
+    })
+  }
+  const big = textOf(
+    await render({
+      mediaUrl: 'http://x/assembly.step',
+      path: 'assembly.step',
+      size: 120 * 1024 * 1024,
+      visible: true
+    })
+  )
+  check('names the size of the file', big.indexOf('120 MB') >= 0, big.slice(0, 200))
+  check(
+    'warns that it may take a quarter of an hour',
+    big.indexOf('quarter of an hour') >= 0,
+    big.slice(0, 200)
+  )
+  check(
+    'suggests saving it as STL instead',
+    big.indexOf('save it as STL') >= 0,
+    big.slice(0, 200)
+  )
 
   console.log(
     '\nresult: ' +

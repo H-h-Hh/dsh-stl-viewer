@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 
-const { name, apply } = await import(new URL('../lib/index.js', import.meta.url).href)
+const { name, apply, conversionBudget } = await import(new URL('../lib/index.js', import.meta.url).href)
 
 /** 收集路由的假 ctx。 */
 function fakeContext() {
@@ -294,6 +294,28 @@ test('a fresh context, as after a restart, is served from the disk cache', async
   assert.equal(second.captured.headers['x-dsh-stl-tris'], '12')
   assert.ok(second.captured.body.equals(first.captured.body), 'same bytes as the fresh conversion')
   assert.ok(elapsed < 400, 'disk hit took ' + elapsed + ' ms')
+})
+
+test('the time budget grows with the file, so a 116 MB assembly is not cut off', () => {
+  // 小文件仍给十分钟：少于这个数就没必要按体积算。
+  assert.equal(conversionBudget(1024 * 1024), 10 * 60 * 1000)
+  // 116 MB 要二十分钟以上，二十秒一兆给到三十九分钟。
+  assert.equal(conversionBudget(116 * 1024 * 1024), 116 * 20 * 1000)
+  assert.ok(conversionBudget(200 * 1024 * 1024) > conversionBudget(50 * 1024 * 1024))
+  assert.equal(conversionBudget(0), 10 * 60 * 1000)
+})
+
+test('a request whose panel already went away comes back as 499', async () => {
+  const { ctx, routes } = fakeContext()
+  apply(ctx)
+  const bytes = readFileSync(join(root, 'test', 'fixtures', 'cube.step'))
+
+  // 浏览器关掉面板时 fetch 会断开，Node 这一侧的 socket 就是 destroyed。
+  const request = fakeRequest('POST', bytes, 'cube.step', '/dsh-stl-viewer/convert?ext=step')
+  request.socket = { destroyed: true }
+  const response = fakeResponse()
+  await routes.get('/dsh-stl-viewer/convert').handler(request, response)
+  assert.equal(response.captured.status, 499)
 })
 
 test('a file that is not STEP data fails with a JSON error', async () => {  const { ctx, routes } = fakeContext()
