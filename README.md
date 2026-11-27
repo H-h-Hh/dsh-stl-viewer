@@ -371,7 +371,10 @@ showing a generic blob.
   socket and answers `499` instead of finishing a mesh nobody will look at. For something
   that size the practical route is to save it as STL from the CAD tool, which this window
   parses in seconds, or to let it run once — the mesh is then on disk, and every later open
-  is instant.
+  is instant. Even with that budget a file can come back empty: that same 121 MB assembly was
+  read for 55 minutes and then yielded no triangles at all — OpenCascade ended up with shapes it
+  could not tessellate — so the panel now says so in plain words instead of showing the raw JSON
+  error. If that happens to you, the file needs a different export, not a longer wait.
 - **What arrives from STEP is triangles, not surfaces.** Measuring, circles and the volume
   readout work on the tessellation, exactly as they do for STL: a bore is a bore because the
   fitted rim really is round, not because the STEP says `CYLINDRICAL_SURFACE`.
@@ -540,7 +543,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - 点「测量」（或按 `M`）后光标会像 Bambu Studio 那样吸附到**顶点 / 棱 / 面 / 圆**：两个点的直线距离、点到面的垂直距离、两棱的夹角与间距、两面平行取间距、不平行取夹角 + 最短距离、圆心距等，读数都带 ΔX/ΔY/ΔZ；`Shift` + 点击取任意表面点；拖动仍可旋转，`Esc` 退出
 - 悬停圆孔/圆柱的边一圈即整圈选中，**内径与外径是两个独立的圆**可分别点；左上角面板显示 `直径 Ø` 与 `半径 R`，和 Bambu Studio 的读数面板一致
 - 二进制与 ASCII STL 都能读；法线逐面重算、双面打光，Z-up 自动立起来
-- **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致。等待时间随文件放大：超时取 `max(10 分钟, 每 MB 20 秒)`，所以 121 MB 的装配体有 39 分钟预算，遮罩上会写出体积、提醒可能要十几分钟；关掉面板/刷新页面会真的把 worker 停下（宿主回 499），不会白算下去。那么大的文件更实用的做法是在 CAD 里另存 STL——本机几秒就解析完——或者让它算一次，之后磁盘缓存秒开
+- **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致。等待时间随文件放大：超时取 `max(10 分钟, 每 MB 20 秒)`，所以 121 MB 的装配体有 39 分钟预算，遮罩上会写出体积、提醒可能要十几分钟；关掉面板/刷新页面会真的把 worker 停下（宿主回 499），不会白算下去。也有可能等完了却一个面都没有（实测那份 121 MB 的装配体读了 55 分钟后 OpenCascade 没给回任何三角面，面板会直说“没有可三角化的实体”），那不是慢的问题，是导出方式的问题。那么大的文件更实用的做法是在 CAD 里另存 STL——本机几秒就解析完——或者让它算一次，之后磁盘缓存秒开
 - **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**。「自动」取的是**模型自己坐标系里**最薄的一个方向（CAD 里 Z 向上，渲染时几何被转成 Y-up，两套坐标混用就会让「自动」指到侧面去）：轮子绕轮轴转、板子绕法线转，面板上会写成 `自动 (Y)` 这样。「拖动转动」开着时，在零件上拖就是手动转它（空白处拖仍是转视角），抓住点跟着表面走，手指不会从零件上滑开；联动开着时齿链上的邻居按传动比跟着转。面板右上角的 ▾ 可把它折叠成一行（约 30 px），不再挡住模型；面板是固定深色面，字色自带，浅色主题下也不会变成深色字变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动。进测量模式会先冻结所有转动并重建拓扑
 - **齿轮联动**：只要两根轴平行、轴向真有重叠、轴距约等于两处半径之和，就认作一对齿合（STEP 里没有“齿轮”这种东西，全靠几何推），转速按半径反比传递、外齿合反向，「联动」一行显示 `1 : 5.25` 这样的传动比，一个转速就能带动整列车。半径是从三角面量出来的，遇到一个零件带多层齿圈会差几个百分点；面板里的「齿数」填上（这里是 168 / 168 / 32）就按同模数的齿数反比算，精确到 `1 : 5.25`
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板

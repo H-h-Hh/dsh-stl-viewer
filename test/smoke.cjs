@@ -878,6 +878,28 @@ function serveBinary(buf) {
     big.slice(0, 200)
   )
 
+  console.log('\n[18] a STEP with no solid to tessellate says so')
+  fetchImpl = (url) => {
+    if (String(url).indexOf('convert') >= 0) {
+      return Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: 'Server Error',
+        text: async () => JSON.stringify({ error: 'the file holds no triangles' })
+      })
+    }
+    return Promise.resolve({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(16) })
+  }
+  const emptyStep = textOf(
+    await render({ mediaUrl: 'http://x/empty.step', path: 'empty.step', visible: true })
+  )
+  check(
+    'explains that nothing could be tessellated',
+    emptyStep.indexOf('no solid to triangulate') >= 0,
+    emptyStep.slice(0, 200)
+  )
+  check('does not leak the raw JSON', emptyStep.indexOf('"error"') < 0, emptyStep.slice(0, 200))
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')
