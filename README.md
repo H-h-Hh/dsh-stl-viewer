@@ -31,8 +31,10 @@ motion        click 运动, then drag the 分解 slider to pull the parts apart 
               give it a spin rate and an axis. Meshing gears are found for you and the 联动
               row passes the turn along; type the 齿数 of each gear to make the ratio exact.
               Turn on 拖动转动 to grab a part and turn it with the mouse instead — dragging
-              empty space still orbits. The ▾ at the corner of the panel folds it down to its
-              title so it stops covering the model. Esc or 运动 again leaves the mode
+              empty space still orbits. 以圆为轴 takes the axis from the model itself: click a
+              bore or a round edge and its centre becomes the hinge, its normal the axis. The ▾
+              at the corner of the panel folds it down to its title so it stops covering the
+              model. Esc or 运动 again leaves the mode
 
 convert       a .step / .iges / .brep file is posted to the host, which tessellates it with
               OpenCascade in a worker; a small overlay counts the seconds and can cancel
@@ -116,6 +118,17 @@ row reads <code>1 : 5.25</code> and one spin rate turns all three at the ratio t
 two wheels the same way, the pinion the other way round. Nothing in the file says “gear”; the
 plugin finds the pairs by parallel axes and centre distance, and the 齿数 boxes turn that
 estimate into the drawing's own numbers.</sub></p>
+
+<p align="center">
+  <img src="docs/preview/preview_hinge.jpg" width="100%" alt="An arm assembly with one arm selected, the motion panel offering an axis taken from a circle">
+</p>
+
+<p align="center"><sub>以圆为轴: the arm is a 230 mm plate whose real hinge is a servo output shaft 25 mm
+off its own centre, so the automatic axis (the thinnest side of its bounding box, here
+<code>自动 (Z)</code>) cannot know it. Pick the part, press <code>以圆为轴</code> and click the
+bore or the servo horn: the circle's centre becomes the hinge and its normal the axis, and the
+part then turns about that line — the vertex-to-axis distance does not change by more than a
+millionth while the arm swings 29 mm at its tip.</sub></p>
 
 > **Why a separate plugin?**
 > DeepSeek Harness ships previews for text, images, PDFs and Markdown. Binary CAD
@@ -204,6 +217,12 @@ estimate into the drawing's own numbers.</sub></p>
   the tangential direction of the turn is projected into the screen and the drag is fitted to it,
   which also makes dragging backwards turn it back. With 联动 on, the parts it meshes with follow
   at the train's ratio, so hand-cranking one gear cranks the whole train
+- **Any axis, not just X/Y/Z** — the row under 回转轴 takes the hinge from the model:
+  press 以圆为轴, click a bore or a round edge, and that circle's centre becomes the pivot while
+  its normal becomes the axis. Click a flat face instead and the plugin looks at that face's own
+  circular boundaries and takes the one nearest your click, so clicking the plate around a hole
+  works too. Esc leaves the picker before it leaves the mode, the row marks `圆的轴` once a
+  circle is in use, and the automatic choice (a bounding-box measurement) is only a fallback
 - **Standard views, animated** — front / top / right / iso on keys `1`–`4`, with a 260 ms
   eased transition that moves the orbit angles only, so your zoom and focus point survive
 - **Wireframe and turntable** — `W` and `A`, or the same rows in the view menu. Wireframe
@@ -334,6 +353,12 @@ showing a generic blob.
   faces, which is what you want when measuring a flat pad against a plate, but a fillet is
   not a single face. Faces are grown along shared edges only, so a mesh with welded
   vertices gives the best regions.
+- **The automatic axis is a measurement, not a hinge.** 「自动」picks the thinnest side of the
+  part's bounding box in the model's own frame — right for a wheel or a flat plate, wrong for
+  anything pinned at a point that is not its centre (an arm on a servo horn, a lid on a barrel
+  hinge). 以圆为轴 exists for exactly that case: a real CAD assembly puts a bore right where the
+  joint is, and the circle's centre and normal *are* the joint. A conical hole is fitted as a
+  circle and refused when its radius wanders, so tapping a chamfer is not a risk.
 - **Snapping needs the crease topology, which is built on first use.** Finding corners and
   creases means an edge sweep over the mesh — 0.6 s for 47 k facets — so it happens the first
   time you hover in measure mode instead of when the file opens. Meshes above 400 k facets
@@ -531,6 +556,19 @@ output on the three-part gear fixture: `ratioMeasured: 5.452`, `withTeeth.ratio:
 env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/couple.cjs out.png ./_your_assembly.step
 ```
 
+`test/hinge.cjs` is the axis-from-a-circle end-to-end. It opens a model through the real converter
+route, enters 运动, selects a part, presses 以圆为轴 and checks that clicking again leaves the
+picker (Esc) — then it either clicks a circle it found by scanning the frame or, on a big assembly
+where the horns are only a few pixels wide, clicks anywhere on the part and lets the face fallback
+choose a bore. Either way it samples a few dozen vertices before and after a turn and asserts that
+every vertex stayed the same distance from the chosen axis: `worstRadiusDrift` comes out at 1e-7 or
+less over a 230 mm part. Run it with `GRID=0.05` on a dense model to make the circle scan finer.
+
+```bash
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS <electron> test/hinge.cjs out.png ./fixtures/ring.stl 0
+env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS GRID=0.05 <electron> test/hinge.cjs out.png ./_your_assembly.step 1
+```
+
 ## 中文速览
 
 给 DSH 侧边栏加一个 **STL / STEP 三维预览**：文件树里点开 `.stl`、`.step`、`.stp`、`.iges`、`.igs`、`.brep`，右侧面板直接渲染，交互同常规 3D 看图。
@@ -546,6 +584,7 @@ plugin_manager install_bundle  target: file:D:/path/to/dsh-stl-viewer
 - **STEP / IGES / BREP**：B-rep 文件里根本没有三角面，字节会先 POST 给插件的宿主路由，由 OpenCascade（`occt-import-js`）在 worker 线程里三角化，再回传紧凑网格——遮罩上显示转换秒数、可取消。慢的是 OpenCascade 解析 B-rep：约每 MB 1.2–2 秒，且与三角化参数无关（6 MB 的钢网无论怎么调都是 12.8 秒）。所以只让它算一次：worker 常驻复用，结果按 SHA-1 缓存在内存（8 个 / 192 MB）和 `%TEMP%/dsh-stl-viewer-cache`（24 个 / 512 MB），重开同一文件甚至重启 DSH 后都是秒开——实测冷 12.5 秒、内存 6 ms、磁盘 8 ms。6 MB 钢网得到 17,136 个三角面，与同零件的 STL 导出完全一致。等待时间随文件放大：超时取 `max(10 分钟, 每 MB 20 秒)`，所以 121 MB 的装配体有 39 分钟预算，遮罩上会写出体积、提醒可能要十几分钟；关掉面板/刷新页面会真的把 worker 停下（宿主回 499），不会白算下去。也有可能等完了却一个面都没有（实测那份 121 MB 的装配体读了 55 分钟后 OpenCascade 没给回任何三角面，面板会直说“没有可三角化的实体”），那不是慢的问题，是导出方式的问题。那么大的文件更实用的做法是在 CAD 里另存 STL——本机几秒就解析完——或者让它算一次，之后磁盘缓存秒开
 - **装配体运动**（`运动`）：STEP 里的每个实体算一个零件，拖「分解」把它们沿各自方向散开（带 900 ms 缓动，相机自动退到能看全的位置）；点零件行或直接在模型上点，就能给它单独设**转速**（每分钟转数）和**回转轴**。「自动」取的是**模型自己坐标系里**最薄的一个方向（CAD 里 Z 向上，渲染时几何被转成 Y-up，两套坐标混用就会让「自动」指到侧面去）：轮子绕轮轴转、板子绕法线转，面板上会写成 `自动 (Y)` 这样。「拖动转动」开着时，在零件上拖就是手动转它（空白处拖仍是转视角），抓住点跟着表面走，手指不会从零件上滑开；联动开着时齿链上的邻居按传动比跟着转。面板右上角的 ▾ 可把它折叠成一行（约 30 px），不再挡住模型；面板是固定深色面，字色自带，浅色主题下也不会变成深色字变换是直接烘进顶点与法线的（只对改动的零件 `bufferSubData`），所以拾取、测量、线框、体积读数都跟着走动。进测量模式会先冻结所有转动并重建拓扑
 - **齿轮联动**：只要两根轴平行、轴向真有重叠、轴距约等于两处半径之和，就认作一对齿合（STEP 里没有“齿轮”这种东西，全靠几何推），转速按半径反比传递、外齿合反向，「联动」一行显示 `1 : 5.25` 这样的传动比，一个转速就能带动整列车。半径是从三角面量出来的，遇到一个零件带多层齿圈会差几个百分点；面板里的「齿数」填上（这里是 168 / 168 / 32）就按同模数的齿数反比算，精确到 `1 : 5.25`
+- **以圆为轴**：自动轴只是“包围盒最薄的那一边”，机臂这种铰链不在自身中心的零件会转错地方。选中零件后点「回转轴」下面的 `以圆为轴`，再点一下模型上的圆孔或圆边——那个圆的圆心就是铰链、法线就是轴（点平面也行：会在这块面自己的圆边里挑离点击处最近的一个）。`Esc` 先退出选圆再退出运动模式，装上之后那一行会显示 `圆的轴`，换回 X/Y/Z 或「自动」就恢复
 - 相机按包围球自适应，0.6 mm 的钢网和 300 mm 的零件都会铺满面板
 - 「视图」菜单：正视 / 俯视 / 右视 / 等轴（`1`–`4`，260 ms 缓动过渡，缩放保持不变）、线框（`W`）、自动旋转（`A`）、坐标轴（`G`）、保存当前画面为 PNG，以及 `?` 快捷键卡片
 - 右下角有红/绿/蓝 **XYZ 三脚标**：跟着相机转，背向你的轴压暗，正对你的轴画成圆环；用 SVG 画所以字始终清晰，`G` 可关。字母标的是**模型自己的轴**——零件在 CAD 里 Z 向上，屏幕上就是蓝 Z 朝上（渲染时几何被转成 Y-up，三脚标画之前会把这步转回去）

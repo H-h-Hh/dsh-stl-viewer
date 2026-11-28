@@ -900,6 +900,66 @@ function serveBinary(buf) {
   )
   check('does not leak the raw JSON', emptyStep.indexOf('"error"') < 0, emptyStep.slice(0, 200))
 
+  // ---------------------------------------------------------------- hinge axis
+  console.log('\n[19] a part can turn about any axis line')
+  {
+    const { describeParts, rotateAroundAxis } = mod.__internals
+
+    const corners = []
+    for (const s of [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1]]) {
+      corners.push(20 * s[0], 10 * s[1], 5 * s[2])
+    }
+    corners.push(corners[0], corners[1], corners[2])
+    const part = describeParts(new Float32Array(corners), [{ name: '', start: 0, count: 3 }])[0]
+    check(
+      'a part starts with no pivot of its own',
+      part.pivot === null && part.axisVec === null,
+      JSON.stringify({ pivot: part.pivot, axisVec: part.axisVec })
+    )
+
+    // 机臂那个场景：轴不穿过零件中心，而是舵机输出轴（模型 X 方向，过 y=7.7、z=-53.5）。
+    // 绕它转 180 度，点必须落到轴的对面，半径保持不变。
+    const hinge = [0, 7.7, -53.5]
+    const axis = [1, 0, 0]
+    const grip = [80, 40, -53.5]
+    const before = Math.hypot(grip[1] - hinge[1], grip[2] - hinge[2])
+    const half = rotateAroundAxis(grip, hinge, axis, Math.PI)
+    const after = Math.hypot(half[1] - hinge[1], half[2] - hinge[2])
+    check(
+      'half a turn about the servo shaft keeps the radius',
+      Math.abs(after - before) < 1e-9 && before > 0,
+      'radius ' + before.toFixed(3) + ' -> ' + after.toFixed(3)
+    )
+    check(
+      'half a turn about the servo shaft lands on the other side',
+      Math.abs(half[0] - grip[0]) < 1e-9 && Math.abs(half[2] - (-53.5 - (grip[2] + 53.5))) < 1e-6,
+      JSON.stringify(half)
+    )
+
+    const spun = rotateAroundAxis(grip, hinge, axis, Math.PI * 2)
+    check(
+      'a full turn comes back to where it started',
+      Math.abs(spun[0] - grip[0]) < 1e-6 &&
+        Math.abs(spun[1] - grip[1]) < 1e-6 &&
+        Math.abs(spun[2] - grip[2]) < 1e-6,
+      JSON.stringify(spun)
+    )
+
+    // 斜轴：点 (10,0,0) 绕 (1,1,0)/\u221a2 转 90 度，到这条轴的距离必须保持不变。
+    const radial = (p) => {
+      const n = [1 / Math.SQRT2, 1 / Math.SQRT2, 0]
+      const d = p[0] * n[0] + p[1] * n[1] + p[2] * n[2]
+      return Math.hypot(p[0] - d * n[0], p[1] - d * n[1], p[2] - d * n[2])
+    }
+    const tiltAxis = [1 / Math.SQRT2, 1 / Math.SQRT2, 0]
+    const tilt = rotateAroundAxis([10, 0, 0], [0, 0, 0], tiltAxis, Math.PI / 2)
+    check(
+      'a tilted axis keeps the point on its cylinder',
+      Math.abs(radial(tilt) - radial([10, 0, 0])) < 1e-9,
+      radial(tilt).toFixed(6) + ' vs ' + radial([10, 0, 0]).toFixed(6)
+    )
+  }
+
   console.log(
     '\nresult: ' +
       (failures.length ? failures.length + ' failed → ' + failures.join('; ') : 'all passed')
